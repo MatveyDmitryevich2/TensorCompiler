@@ -7,6 +7,9 @@ set(CMAKE_EXPORT_COMPILE_COMMANDS ON) # to generate compile_commands.json
 add_subdirectory(flags)
 add_subdirectory(third_party)
 
+add_subdirectory(src/graph)
+add_subdirectory(src/onnx_loader)
+
 add_executable(tc.x)
 
 target_sources(tc.x
@@ -21,6 +24,10 @@ target_include_directories(tc.x
 
 target_link_libraries(tc.x
     PRIVATE 
+        tc-flags
+        graph
+        onnx_loader
+
         spdlog
 )
 

@@ -1,8 +1,12 @@
+#include <cstdlib>
 #include <iostream>
 
 #include <spdlog/spdlog.h>
 #include <spdlog/common.h>
 #include <spdlog/sinks/basic_file_sink.h>
+
+#include "graph/graph.hpp"
+#include "onnx_loader/onnx_loader.hpp"
 
 int main(int argc, const char* argv[]) {
 
@@ -22,4 +26,15 @@ int main(int argc, const char* argv[]) {
     for (int i = 0; i < argc; i++) {
         spdlog::info("argv[{}]: {}", i, argv[i]);
     }
+
+    if (argc < 2) {
+        std::cerr << 
+            "ERROR: not enough args\n" 
+            "   usage: " << argv[0]  << " <model_path>\n";
+
+        return EXIT_FAILURE;
+    }
+
+    tc::OnnxLoader ld{};
+    ld.Load(argv[1]);
 }
