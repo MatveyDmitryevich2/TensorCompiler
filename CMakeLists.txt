@@ -21,7 +21,7 @@ target_include_directories(tc.x
 
 target_link_libraries(tc.x
     PRIVATE 
-        # spdlog
+        spdlog
 )
 
 # enable_testing()
