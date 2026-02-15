@@ -11,9 +11,12 @@ target_include_directories(onnx_loader
 )
 
 target_link_libraries(onnx_loader
+    PUBLIC
+        helpers
     PRIVATE
         tc-flags
         graph
 
         spdlog
+        onnx_proto
 )

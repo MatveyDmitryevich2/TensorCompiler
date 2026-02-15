@@ -4,23 +4,22 @@
 #include <vector>
 #include <cstdint>
 
+#include "graph/node.hpp"
+
 namespace tc {
 
-class INode {
-  public:
-    using Id = int64_t;
-    using AdjList = std::vector<Id>;
-    AdjList adj_nodes_;
-
-    virtual ~INode() = default;
-};
-
+// class that owns nodes memory managies it
 class NodeContainer {
   private:
     std::vector<INode*> nodes_;
   public:
+    using const_iterator = std::vector<INode*>::const_iterator;
+
     NodeContainer() {}
-    
+ 
+// FIXME: implement AddNode method to add nodes to container
+// FIXME: implement destructor that frees nodes
+
     INode* operator[](size_t idx) {
         return nodes_[idx];
     }
@@ -28,6 +27,9 @@ class NodeContainer {
     const INode* operator[](size_t idx) const {
         return nodes_[idx];
     }
+
+    const_iterator begin() const { return nodes_.begin(); }
+    const_iterator end() const { return nodes_.end(); }
 };
 
 class Graph {
@@ -35,6 +37,10 @@ class Graph {
     NodeContainer nodes_;
   public:
     Graph() {}
+
+    using const_iterator = NodeContainer::const_iterator;
+    const_iterator begin() { return nodes_.begin(); }
+    const_iterator end() { return nodes_.end(); }
 };
 
 } // namespace tc

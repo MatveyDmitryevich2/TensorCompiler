@@ -4,12 +4,12 @@
 #include <spdlog/spdlog.h>
 #include <spdlog/common.h>
 #include <spdlog/sinks/basic_file_sink.h>
+#include <stdexcept>
 
 #include "graph/graph.hpp"
 #include "onnx_loader/onnx_loader.hpp"
 
 int main(int argc, const char* argv[]) {
-
     auto logger = spdlog::basic_logger_mt("tc", "tc.log", true);
     spdlog::set_default_logger(logger);
 
@@ -19,7 +19,7 @@ int main(int argc, const char* argv[]) {
     spdlog::set_level(spdlog::level::info);
 #else // NDEBUG
     // spdlog::flush_on(spdlog::level::trace);
-    spdlog::set_level(spdlog::level::debug);
+    spdlog::set_level(spdlog::level::trace);
 #endif // NDEBUG
 
     // log argv
@@ -35,6 +35,12 @@ int main(int argc, const char* argv[]) {
         return EXIT_FAILURE;
     }
 
-    tc::OnnxLoader ld{};
-    ld.Load(argv[1]);
+    try {
+        tc::OnnxLoader ld{};
+        ld.Load(argv[1]);
+    } catch (const std::runtime_error& e) {
+        std::cerr << "Exception: " << e.what() << "\n";
+    } catch (...) {
+        std::cerr << "Unknown exception\n";
+    }
 }
