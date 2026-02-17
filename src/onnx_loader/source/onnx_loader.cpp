@@ -6,18 +6,67 @@
 #include <unordered_map>
 #include <string_view>
 
-#include "graph/node.hpp"
 #include "onnx/onnx-ml.pb.h"
 #include "onnx/onnx_pb.h"
 #include "onnx/proto_utils.h"
 
 #include "helpers/trace_calls.hpp"
+#include "graph/attribute.hpp"
+#include "graph/node.hpp"
 #include "graph/graph.hpp"
 #include "graph/loader.hpp"
 
 namespace tc {
 
 namespace {
+
+AttributeMap ParseAttributes(const onnx::NodeProto& g_node) {
+    AttributeMap out;
+
+    for (const auto& a : g_node.attribute()) {
+        const std::string& name = a.name();
+
+        switch (a.type()) {
+            case onnx::AttributeProto::INT:
+                out.emplace(name, Attribute{name, static_cast<int64_t>(a.i())});
+                break;
+
+            case onnx::AttributeProto::FLOAT:
+                out.emplace(name, Attribute{name, a.f()});
+                break;
+
+            case onnx::AttributeProto::STRING:
+                out.emplace(name, Attribute{name, a.s()});
+                break;
+            case onnx::AttributeProto::INTS: {
+                std::vector<int64_t> v;
+                v.reserve(static_cast<size_t>(a.ints_size()));
+                for (int i = 0; i < a.ints_size(); ++i) v.push_back(static_cast<int64_t>(a.ints(i)));
+                out.emplace(name, Attribute{name, std::move(v)});
+                break;
+            }
+            case onnx::AttributeProto::FLOATS: {
+                std::vector<float> v;
+                v.reserve(static_cast<size_t>(a.floats_size()));
+                for (int i = 0; i < a.floats_size(); ++i) v.push_back(a.floats(i));
+                out.emplace(name, Attribute{name, std::move(v)});
+                break;
+            }
+            case onnx::AttributeProto::STRINGS: {
+                std::vector<std::string> v;
+                v.reserve(static_cast<size_t>(a.strings_size()));
+                for (int i = 0; i < a.strings_size(); ++i) v.push_back(a.strings(i));
+                out.emplace(name, Attribute{name, std::move(v)});
+                break;
+            }
+            default:
+                throw std::runtime_error{"Unsupported ONNX attribute type: '" + name + "'"};
+        }
+    }
+
+    return out;
+}
+
 
 // FIXME: implement dot dump
 void Dump(const onnx::ModelProto& model) {
@@ -107,7 +156,7 @@ void AddOpNode(Graph* graph, const onnx::NodeProto& g_node) {
     }
     
     AttributeMap attrs = ParseAttributes(g_node);
-    graph->AddNode<Node>(name, op, inputs, outputs, attrs);
+    graph->AddNode<Operation>(name, op, inputs, outputs, attrs);
 
 }
 

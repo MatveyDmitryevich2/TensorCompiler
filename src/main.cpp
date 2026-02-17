@@ -1,10 +1,10 @@
 #include <cstdlib>
 #include <iostream>
+#include <stdexcept>
 
 #include <spdlog/spdlog.h>
 #include <spdlog/common.h>
 #include <spdlog/sinks/basic_file_sink.h>
-#include <stdexcept>
 
 #include "graph/graph.hpp"
 #include "onnx_loader/onnx_loader.hpp"

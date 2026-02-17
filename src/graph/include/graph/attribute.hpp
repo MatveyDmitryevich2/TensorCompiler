@@ -6,10 +6,7 @@
 #include <unordered_map>
 #include <variant>
 #include <vector>
-#include <cstddef>
 #include <utility>
-
-#include "onnx/onnx_pb.h"
 
 namespace tc {
 
@@ -22,7 +19,6 @@ class Attribute {
         std::vector<int64_t>,
         std::vector<float>,
         std::vector<std::string>
-        //Еще тензор позже и т.д.
     >;
 
   private:
@@ -41,12 +37,9 @@ class Attribute {
     const std::vector<int64_t>&     AsInts()    const;
     const std::vector<float>&       AsFloats()  const;
     const std::vector<std::string>& AsStrings() const;
-    //аналогично вэрианту добавить тензор и др.
 };
 
 using AttributeMap = std::unordered_map<std::string, Attribute>;
-
-AttributeMap ParseAttributes(const onnx::NodeProto& g_node);
 const Attribute* FindAttribute(const AttributeMap& attrs, const std::string& name);
 
 } // namespace tc

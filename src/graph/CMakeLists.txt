@@ -3,6 +3,7 @@ add_library(graph STATIC)
 target_sources(graph
     PRIVATE
         source/graph.cpp
+        source/attribute.cpp
 )
 
 target_include_directories(graph
@@ -15,4 +16,6 @@ target_link_libraries(graph
         tc-flags
 
         spdlog
+    PUBLIC
+        onnx_proto
 )

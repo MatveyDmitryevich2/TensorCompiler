@@ -73,7 +73,7 @@ enum class OpType {
     kTranspose,
 };
 
-class Node : public IOperation {
+class Operation : public IOperation {
   private:
     OpType op_type_;
     std::vector<Value*> inputs_;
@@ -103,7 +103,7 @@ class Node : public IOperation {
     }
 
   public:
-    Node(
+    Operation(
         const std::string& name,
         OpType op_type,
         const std::vector<Value*>& inputs,
@@ -111,7 +111,7 @@ class Node : public IOperation {
         const AttributeMap& attrs = {}
     ) : IOperation{name}, op_type_{op_type}, inputs_{inputs}, outputs_{outputs}, attrs_{attrs} {}
 
-    ~Node() override = default;
+    ~Operation() override = default;
 
     OpType Type() const { return op_type_; }
     const std::vector<Value*>& Inputs() const { return inputs_; }
