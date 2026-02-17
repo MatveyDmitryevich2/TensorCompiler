@@ -4,3 +4,5 @@ compile_commands.json
 .cache
 __pycache__
 
+# models
+*.onnx
