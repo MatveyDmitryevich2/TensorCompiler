@@ -8,6 +8,7 @@
 #include <type_traits>
 #include <unordered_map>
 
+#include <spdlog/spdlog.h>
 #include "graph/node.hpp"
 
 namespace tc {

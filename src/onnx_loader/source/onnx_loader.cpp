@@ -70,63 +70,45 @@ void Dump(const onnx::ModelProto& model) {
     }
 }
 
-enum Operations {
-    kAdd,
-    kMatMul,
-    kTranspose,
-    kMul,
-    kConv,
-    kRelu,
-    kGemm,
-};
-
-Operations StrToOp(const std::string& op_type) {
-    std::unordered_map<std::string_view, Operations> str_to_op = {
-        {"Add", kAdd},
-        {"MatMul", kMatMul},
-        {"Transpose", kTranspose},
-        {"Mul", kMul},
-        {"Conv", kConv},
-        {"Relu", kRelu},
-        {"Gemm", kGemm},
+OpType StrToOp(const std::string& op_type) {
+    std::unordered_map<std::string_view, OpType> str_to_op = {
+        {"Add",       OpType::kAdd      },
+        {"MatMul",    OpType::kMatMul   },
+        {"Transpose", OpType::kTranspose},
+        {"Mul",       OpType::kMul      },
+        {"Conv",      OpType::kConv     },
+        {"Relu",      OpType::kRelu     },
+        {"Gemm",      OpType::kGemm     },
     };
 
-    return str_to_op[op_type];
+    auto it = str_to_op.find(op_type);
+    if (it == str_to_op.end()) {
+        throw std::runtime_error{"Unsupported op_type: " + op_type};
+    }
+    return it->second;
 }
 
 void AddOpNode(Graph* graph, const onnx::NodeProto& g_node) {
-    Operations op = StrToOp(g_node.op_type());
+    OpType op = StrToOp(g_node.op_type());
     std::string name = g_node.name();
 
     auto find = [graph](const std::string& name) {
         return static_cast<Value*>(graph->FindByName(name));
     };
 
-    switch (op) {
-        case kAdd:
-            graph->AddNode<Add>(
-                name,
-                find(g_node.input()[0]),
-                find(g_node.input()[1]),
-                find(g_node.output()[0])
-            );
-            break;
-        case kMatMul:
-            graph->AddNode<MatMul>(
-                name,
-                find(g_node.input()[0]),
-                find(g_node.input()[1]),
-                find(g_node.output()[0])
-            );
-            break;
-        case kTranspose:
-            graph->AddNode<Transpose>(
-                name,
-                find(g_node.input()[0]),
-                find(g_node.output()[0])
-            );
-            break;
+    std::vector<Value*> inputs;
+    std::vector<Value*> outputs;
+
+    for (const auto& i : g_node.input()) {
+        inputs.push_back(find(i));
     }
+    for (const auto& o : g_node.output()) {
+        outputs.push_back(find(o));
+    }
+    
+    AttributeMap attrs = ParseAttributes(g_node);
+    graph->AddNode<Node>(name, op, inputs, outputs, attrs);
+
 }
 
 } // namaspace
@@ -153,6 +135,19 @@ Graph OnnxLoader::ParseRaw(const std::string& model_raw) {
 
     for (const onnx::ValueInfoProto& g_output: onnx_graph.output()) {
         graph.AddNode<Value>(g_output.name(), Value::BelongTo::kOutput);
+    }
+
+    for (const onnx::TensorProto& t : onnx_graph.initializer()) {
+        Value* v = graph.AddNode<Value>(t.name(), Value::BelongTo::kInitializer);
+
+        v->SetBelongsTo(Value::BelongTo::kInitializer);
+
+        if (t.has_raw_data()) {
+            TensorData data;
+            const std::string& raw = t.raw_data();
+            data.raw.assign(raw.begin(), raw.end());
+            v->SetData(std::move(data));
+        }
     }
 
     for (const onnx::NodeProto& g_node: onnx_graph.node()) {
