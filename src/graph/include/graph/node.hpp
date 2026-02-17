@@ -4,57 +4,124 @@
 #include <filesystem>
 #include <string>
 
+#include <spdlog/spdlog.h>
+
 namespace tc {
 
 class INode {
+  private:
+    std::string name_;
   public:
+    INode(const std::string& name) : name_{name != "" ? name : "<no name>"} {}
     virtual ~INode() = default;
-    virtual std::string to_str() = 0;
+
+    virtual std::string ToStr() const = 0;
+    std::string Name() const { return name_; }
 };
 
-class InputNode : public INode {
+class Type {};
+class Attribute {};
+
+class Value : public INode {
   public:
-    ~InputNode() override = default;
-    std::string to_str() override { return "Input"; }
+    enum class BelongTo {
+        kInput,
+        kOutput,
+        kInternal,
+    };
+  private:
+    BelongTo belongs_;
+  public:
+    Value(const std::string& name, BelongTo belong) : INode{name}, belongs_{belong} {}
+    ~Value() override = default;
+    std::string ToStr() const override { return Name(); }
 };
 
-class OutputNode : public INode {
+class IOperation : public INode {
   public:
-    ~OutputNode() override = default;
-    std::string to_str() override { return "Output"; }
-};
-
-class IOperations : public INode {
-  public:
-    ~IOperations() override = default;
-    std::string to_str() override = 0;
+    IOperation(const std::string& name) : INode{name} {}
+    ~IOperation() override = default;
 };
 
 // FIXME: add other nodes
 // FIXME: support attributes and types 
 
 // A + B = C
-class Add : public IOperations {
+class Add : public IOperation {
   private:
-    InputNode* a_;
-    InputNode* b_;
-    OutputNode* c_;
+    Value* a_;
+    Value* b_;
+    Value* c_;
   public:
-    Add(InputNode* A, InputNode* B, OutputNode* C) : a_{A}, b_{B}, c_{C} {}
+    Add(
+        const std::string& name, 
+        Value* A, 
+        Value* B, 
+        Value* C
+    ) : IOperation{name}, a_{A}, b_{B}, c_{C} {}
+
     ~Add() override = default;
-    std::string to_str() override { return "Add(a,b) -> c"; }
+    std::string ToStr() const override { 
+        return "Add(" + a_->Name() + "," + b_->Name() + ") -> " + c_->Name(); 
+    }
 };
 
 // A * B = Y
-class MatMul : public INode {
+class MatMul : public IOperation {
+  private:
+    Value* a_;
+    Value* b_;
+    Value* y_;
   public:
-    InputNode* a_;
-    InputNode* b_;
-    OutputNode* y_;
-  public:
-    MatMul(InputNode* A, InputNode* B, OutputNode* Y) : a_{A}, b_{B}, y_{Y} {}
+    MatMul(
+        const std::string& name, 
+        Value* A, 
+        Value* B, 
+        Value* Y
+    ) : IOperation{name}, a_{A}, b_{B}, y_{Y} {}
+
     ~MatMul() override = default;
-    std::string to_str() override { return "MatMul(a,b) -> y"; }
+    std::string ToStr() const override { 
+        return "MatMul(" + a_->Name() + "," + b_->Name() + ") -> " + y_->Name(); 
+    }
+};
+
+class Transpose : public IOperation {
+  private:
+    Value* data_;
+    Value* transposed_;
+  public:
+    Transpose(
+        const std::string& name, 
+        Value* data, 
+        Value* transposed
+    ) : IOperation{name}, data_{data}, transposed_{transposed} {}
+
+    ~Transpose() override = default;
+    std::string ToStr() const override { 
+        return "Transpose(" + data_->Name() + ") -> " + transposed_->Name(); 
+    }
+};
+
+class Mul : public IOperation {
+    Mul(const std::string& name) : IOperation{name} {}
+    ~Mul() override = default;
+    std::string ToStr() const override { return "Mul " + Name() + "\n"; }
+};
+class Conv : public IOperation {
+    Conv(const std::string& name) : IOperation{name} {}
+    ~Conv() override = default;
+    std::string ToStr() const override { return "Conv " + Name() + "\n"; }
+};
+class Relu : public IOperation {
+    Relu(const std::string& name) : IOperation{name} {}
+    ~Relu() override = default;
+    std::string ToStr() const override { return "Relu " + Name() + "\n"; }
+};
+class Gemm : public IOperation {
+    Gemm(const std::string& name) : IOperation{name} {}
+    ~Gemm() override = default;
+    std::string ToStr() const override { return "Gemm " + Name() + "\n"; }
 };
 
 } // namespace tc

@@ -1,10 +1,7 @@
 #ifndef ONNX_LOADER_HPP_
 #define ONNX_LOADER_HPP_
 
-#include <stdexcept>
 #include <string>
-#include <fstream>
-#include <sstream>
 
 #include "helpers/trace_calls.hpp"
 #include "graph/loader.hpp"

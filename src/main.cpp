@@ -18,7 +18,7 @@ int main(int argc, const char* argv[]) {
 #if defined (NDEBUG)
     spdlog::set_level(spdlog::level::info);
 #else // NDEBUG
-    // spdlog::flush_on(spdlog::level::trace);
+    spdlog::flush_on(spdlog::level::trace);
     spdlog::set_level(spdlog::level::trace);
 #endif // NDEBUG
 
@@ -37,7 +37,10 @@ int main(int argc, const char* argv[]) {
 
     try {
         tc::OnnxLoader ld{};
-        ld.Load(argv[1]);
+        tc::Graph graph = ld.Load(argv[1]);
+        for (auto&& n: graph) {
+            std::cout << n->ToStr() << "\n";
+        }
     } catch (const std::runtime_error& e) {
         std::cerr << "Exception: " << e.what() << "\n";
     } catch (...) {

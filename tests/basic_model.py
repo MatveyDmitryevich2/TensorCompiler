@@ -21,18 +21,21 @@ B = make_tensor_value_info('B', TensorProto.FLOAT, [None, None])
 
 Y = make_tensor_value_info('Y', TensorProto.FLOAT, [None])
 
+node_transpose = make_node('Transpose', ['A'], ['tA'], perm=[1, 0])
+
 # nodes
 
 # It creates a node defined by the operator type MatMul,
 # 'X', 'A' are the inputs of the node, 'XA' the output.
-node1 = make_node('MatMul', ['X', 'A'], ['XA'])
+node1 = make_node('MatMul', ['X', 'tA'], ['XA'])
 node2 = make_node('Add', ['XA', 'B'], ['Y'])
+
 
 # from nodes to graph
 # the graph is built from the list of nodes, the list of inputs,
 # the list of outputs and a name.
 
-graph = make_graph([node1, node2],  # nodes
+graph = make_graph([node_transpose, node1, node2],  # nodes
                    'lr',  # a name
                    [X, A, B],  # inputs
                    [Y])  # outputs
