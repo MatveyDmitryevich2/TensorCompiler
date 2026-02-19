@@ -41,24 +41,24 @@ AttributeMap ParseAttributes(const onnx::NodeProto& g_node) {
                 out.emplace(name, Attribute{name, a.s()});
                 break;
             case onnx::AttributeProto::INTS: {
-                std::vector<int64_t> v;
-                v.reserve(static_cast<size_t>(a.ints_size()));
-                for (int i = 0; i < a.ints_size(); ++i) v.push_back(static_cast<int64_t>(a.ints(i)));
-                out.emplace(name, Attribute{name, std::move(v)});
+                std::vector<int64_t> vec;
+                vec.reserve(static_cast<size_t>(a.ints_size()));
+                for (int i = 0; i < a.ints_size(); ++i) vec.push_back(static_cast<int64_t>(a.ints(i)));
+                out.emplace(name, Attribute{name, std::move(vec)});
                 break;
             }
             case onnx::AttributeProto::FLOATS: {
-                std::vector<float> v;
-                v.reserve(static_cast<size_t>(a.floats_size()));
-                for (int i = 0; i < a.floats_size(); ++i) v.push_back(a.floats(i));
-                out.emplace(name, Attribute{name, std::move(v)});
+                std::vector<float> vec;
+                vec.reserve(static_cast<size_t>(a.floats_size()));
+                for (int i = 0; i < a.floats_size(); ++i) vec.push_back(a.floats(i));
+                out.emplace(name, Attribute{name, std::move(vec)});
                 break;
             }
             case onnx::AttributeProto::STRINGS: {
-                std::vector<std::string> v;
-                v.reserve(static_cast<size_t>(a.strings_size()));
-                for (int i = 0; i < a.strings_size(); ++i) v.push_back(a.strings(i));
-                out.emplace(name, Attribute{name, std::move(v)});
+                std::vector<std::string> vec;
+                vec.reserve(static_cast<size_t>(a.strings_size()));
+                for (int i = 0; i < a.strings_size(); ++i) vec.push_back(a.strings(i));
+                out.emplace(name, Attribute{name, std::move(vec)});
                 break;
             }
             default:
@@ -149,10 +149,10 @@ int BelongPriority(Value::BelongTo b) {
     return 0;
 }
 
-void UpgradeBelong(Value* v, Value::BelongTo b) {
-    if (v == nullptr) return;
-    if (BelongPriority(b) > BelongPriority(v->GetBelongsTo())) {
-        v->SetBelongsTo(b);
+void UpgradeBelong(Value* val, Value::BelongTo b) {
+    if (val == nullptr) return;
+    if (BelongPriority(b) > BelongPriority(val->GetBelongsTo())) {
+        val->SetBelongsTo(b);
     }
 }
 
@@ -211,44 +211,44 @@ Graph OnnxLoader::ParseRaw(const std::string& model_raw) {
     for (const onnx::NodeProto& g_node: onnx_graph.node()) {
         for (const std::string& n_input: g_node.input()) {
             if (n_input.empty()) continue;
-            Value* v = graph.AddNode<Value>(n_input, Value::BelongTo::kInternal);
-            UpgradeBelong(v, Value::BelongTo::kInternal);
+            Value* val = graph.AddNode<Value>(n_input, Value::BelongTo::kInternal);
+            UpgradeBelong(val, Value::BelongTo::kInternal);
         }
         for (const std::string& n_output: g_node.output()) {
             if (n_output.empty()) continue;
-            Value* v = graph.AddNode<Value>(n_output, Value::BelongTo::kInternal);
-            UpgradeBelong(v, Value::BelongTo::kInternal);
+            Value* val = graph.AddNode<Value>(n_output, Value::BelongTo::kInternal);
+            UpgradeBelong(val, Value::BelongTo::kInternal);
         }
     }
 
-    for (const onnx::TensorProto& t : onnx_graph.initializer()) {
+    for (const onnx::TensorProto& init_tensor : onnx_graph.initializer()) {
         std::optional<TensorData> opt = std::nullopt;
 
-        if (t.has_raw_data()) {
+        if (init_tensor.has_raw_data()) {
             TensorData data;
-            const std::string& raw = t.raw_data();
+            const std::string& raw = init_tensor.raw_data();
             data.raw.assign(raw.begin(), raw.end());
             opt = std::move(data);
         }
 
-        INode* node_ptr = graph.FindByName(t.name());
+        INode* node_ptr = graph.FindByName(init_tensor.name());
         if (node_ptr == nullptr) {
-            graph.AddNode<Value>(t.name(), Value::BelongTo::kInitializer, std::move(opt));
+            graph.AddNode<Value>(init_tensor.name(), Value::BelongTo::kInitializer, std::move(opt));
         } else {
-            Value* v = static_cast<Value*>(node_ptr);
-            UpgradeBelong(v, Value::BelongTo::kInitializer);
-            v->MergeInitializerData(std::move(opt));
+            Value* val = static_cast<Value*>(node_ptr);
+            UpgradeBelong(val, Value::BelongTo::kInitializer);
+            val->MergeInitializerData(std::move(opt));
         }
     }
 
     for (const onnx::NodeProto& g_node: onnx_graph.node()) {
         for (const std::string& n_input: g_node.input()) {
-            Value* v = graph.AddNode<Value>(n_input, Value::BelongTo::kInternal);
-            UpgradeBelong(v, Value::BelongTo::kInternal);
+            Value* val = graph.AddNode<Value>(n_input, Value::BelongTo::kInternal);
+            UpgradeBelong(val, Value::BelongTo::kInternal);
         }
         for (const std::string& n_output: g_node.output()) {
-            Value* v = graph.AddNode<Value>(n_output, Value::BelongTo::kInternal);
-            UpgradeBelong(v, Value::BelongTo::kInternal);
+            Value* val = graph.AddNode<Value>(n_output, Value::BelongTo::kInternal);
+            UpgradeBelong(val, Value::BelongTo::kInternal);
         }
     }
 
