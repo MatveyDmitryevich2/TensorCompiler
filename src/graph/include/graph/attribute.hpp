@@ -12,7 +12,7 @@ namespace tc {
 
 class Attribute {
   public:
-    using Value = std::variant<
+    using AttrValue = std::variant<
         int64_t,
         float,
         std::string,
@@ -23,13 +23,13 @@ class Attribute {
 
   private:
     std::string name_;
-    Value value_;
+    AttrValue value_;
 
   public:
-    Attribute(const std::string& name, Value value);
+    Attribute(const std::string& name, AttrValue value);
 
     const std::string& Name() const { return name_; }
-    const Value& GetValue() const { return value_; }
+    const AttrValue& GetValue() const { return value_; }
 
     int64_t                         AsInt()     const;
     float                           AsFloat()   const;

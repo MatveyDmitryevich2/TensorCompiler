@@ -5,6 +5,8 @@
 #include <iostream>
 #include <unordered_map>
 #include <string_view>
+#include <vector>
+#include <optional>
 
 #include "onnx/onnx-ml.pb.h"
 #include "onnx/onnx_pb.h"
@@ -137,12 +139,42 @@ OpType StrToOp(const std::string& op_type) {
     return it->second;
 }
 
+int BelongPriority(Value::BelongTo b) {
+    switch (b) {
+        case Value::BelongTo::kInternal:    return 0;
+        case Value::BelongTo::kInput:       return 1;
+        case Value::BelongTo::kOutput:      return 2;
+        case Value::BelongTo::kInitializer: return 3;
+    }
+    return 0;
+}
+
+void UpgradeBelong(Value* v, Value::BelongTo b) {
+    if (v == nullptr) return;
+    if (BelongPriority(b) > BelongPriority(v->GetBelongsTo())) {
+        v->SetBelongsTo(b);
+    }
+}
+
 void AddOpNode(Graph* graph, const onnx::NodeProto& g_node) {
+    if (g_node.name().empty()) {
+        throw std::runtime_error{"ONNX node has empty name: op_type=" + g_node.op_type()};
+    }
+    if (graph->FindByName(g_node.name()) != nullptr) {
+        throw std::runtime_error{"Duplicate ONNX node name: " + g_node.name()};
+    }
+
     OpType op = StrToOp(g_node.op_type());
     std::string name = g_node.name();
 
-    auto find = [graph](const std::string& name) {
-        return static_cast<Value*>(graph->FindByName(name));
+    auto find = [graph](const std::string& v_name) {
+    if (v_name.empty()) return static_cast<Value*>(nullptr);
+
+    INode* node_ptr = graph->FindByName(v_name);
+    if (node_ptr != nullptr) {
+        return static_cast<Value*>(node_ptr);
+    }
+    return graph->AddNode<Value>(v_name, Value::BelongTo::kInternal);
     };
 
     std::vector<Value*> inputs;
@@ -157,7 +189,6 @@ void AddOpNode(Graph* graph, const onnx::NodeProto& g_node) {
     
     AttributeMap attrs = ParseAttributes(g_node);
     graph->AddNode<Operation>(name, op, inputs, outputs, attrs);
-
 }
 
 } // namaspace
@@ -173,38 +204,51 @@ Graph OnnxLoader::ParseRaw(const std::string& model_raw) {
 
     Dump(model);
 
-    // FIXME: convert onnx model to graph
-
     Graph graph;
 
     const onnx::GraphProto& onnx_graph = model.graph();
-    for (const onnx::ValueInfoProto& g_input: onnx_graph.input()) {
-        graph.AddNode<Value>(g_input.name(), Value::BelongTo::kInput);
-    }
 
-    for (const onnx::ValueInfoProto& g_output: onnx_graph.output()) {
-        graph.AddNode<Value>(g_output.name(), Value::BelongTo::kOutput);
+    for (const onnx::NodeProto& g_node: onnx_graph.node()) {
+        for (const std::string& n_input: g_node.input()) {
+            if (n_input.empty()) continue;
+            Value* v = graph.AddNode<Value>(n_input, Value::BelongTo::kInternal);
+            UpgradeBelong(v, Value::BelongTo::kInternal);
+        }
+        for (const std::string& n_output: g_node.output()) {
+            if (n_output.empty()) continue;
+            Value* v = graph.AddNode<Value>(n_output, Value::BelongTo::kInternal);
+            UpgradeBelong(v, Value::BelongTo::kInternal);
+        }
     }
 
     for (const onnx::TensorProto& t : onnx_graph.initializer()) {
-        Value* v = graph.AddNode<Value>(t.name(), Value::BelongTo::kInitializer);
-
-        v->SetBelongsTo(Value::BelongTo::kInitializer);
+        std::optional<TensorData> opt = std::nullopt;
 
         if (t.has_raw_data()) {
             TensorData data;
             const std::string& raw = t.raw_data();
             data.raw.assign(raw.begin(), raw.end());
-            v->SetData(std::move(data));
+            opt = std::move(data);
+        }
+
+        INode* node_ptr = graph.FindByName(t.name());
+        if (node_ptr == nullptr) {
+            graph.AddNode<Value>(t.name(), Value::BelongTo::kInitializer, std::move(opt));
+        } else {
+            Value* v = static_cast<Value*>(node_ptr);
+            UpgradeBelong(v, Value::BelongTo::kInitializer);
+            v->MergeInitializerData(std::move(opt));
         }
     }
 
     for (const onnx::NodeProto& g_node: onnx_graph.node()) {
         for (const std::string& n_input: g_node.input()) {
-            graph.AddNode<Value>(n_input, Value::BelongTo::kInternal);
+            Value* v = graph.AddNode<Value>(n_input, Value::BelongTo::kInternal);
+            UpgradeBelong(v, Value::BelongTo::kInternal);
         }
         for (const std::string& n_output: g_node.output()) {
-            graph.AddNode<Value>(n_output, Value::BelongTo::kInternal);
+            Value* v = graph.AddNode<Value>(n_output, Value::BelongTo::kInternal);
+            UpgradeBelong(v, Value::BelongTo::kInternal);
         }
     }
 

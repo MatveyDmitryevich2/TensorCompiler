@@ -4,7 +4,7 @@
 
 namespace tc {
 
-Attribute::Attribute(const std::string& name, Value value)
+Attribute::Attribute(const std::string& name, AttrValue value)
     : name_{name}, value_{std::move(value)} {
     if (name_.empty()) {
         throw std::runtime_error{"Attribute: empty name"};
