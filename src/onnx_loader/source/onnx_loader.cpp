@@ -203,20 +203,18 @@ Graph OnnxLoader::ParseRaw(const std::string& model_raw) {
     }
 
     for (const onnx::TensorProto& init_tensor : onnx_graph.initializer()) {
-        std::optional<TensorData> opt = std::nullopt;
-
+        std::optional<TensorData> tensor_data = std::nullopt;
         if (init_tensor.has_raw_data()) {
-            TensorData data;
-            data.raw = init_tensor.raw_data();
-            opt = std::move(data);
+            tensor_data = TensorData{{}, init_tensor.raw_data()};
         }
 
+        // FIXME: ?
         INode* node_ptr = graph.FindByName(init_tensor.name());
         if (node_ptr == nullptr) {
-            graph.AddNode<Value>(init_tensor.name(), Value::BelongTo::kInitializer, std::move(opt));
+            graph.AddNode<Value>(init_tensor.name(), Value::BelongTo::kInitializer, tensor_data);
         } else {
             Value* val = static_cast<Value*>(node_ptr);
-            val->MergeInitializerData(std::move(opt));
+            val->MergeInitializerData(std::move(tensor_data));
         }
     }
 
