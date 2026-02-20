@@ -71,7 +71,7 @@ AttributeMap ParseAttributes(const onnx::NodeProto& g_node) {
 
 
 // FIXME: implement dot dump
-void Dump(const onnx::ModelProto& model) {
+[[deprecated]] void Dump(const onnx::ModelProto& model) {
     const auto& g = model.graph();
     for (const auto& i: g.input()) {
         std::cout << "Value: " << i.name() << "\n";
@@ -185,8 +185,6 @@ Graph OnnxLoader::ParseRaw(const std::string& model_raw) {
     if (!success) {
         throw std::runtime_error{"Unable to parse onnx model"};
     }
-
-    Dump(model);
 
     Graph graph;
 
