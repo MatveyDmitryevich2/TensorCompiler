@@ -81,7 +81,7 @@ class NodeContainer {
     }
 
     bool Contains(const std::string& name) const {
-    return name_table_.find(name) != name_table_.end();
+        return name_table_.contains(name);
     }
 
     INode* FindByName(const std::string& name) {

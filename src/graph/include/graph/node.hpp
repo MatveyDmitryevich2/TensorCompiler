@@ -20,13 +20,12 @@ class INode {
 
   public:
     INode(const std::string& name) : name_{name} {
-    if (name_.empty()) { throw std::runtime_error{"INode: empty name"}; }
+        if (name_.empty()) { throw std::runtime_error{"INode: empty name"}; }
     }
 
     virtual ~INode() = default;
 
     virtual std::string ToStr() const = 0;
-    virtual bool IsValue() const { return false; }
     const std::string& Name() const { return name_; }
 };
 
@@ -34,7 +33,7 @@ class TensorType {/*dtype,shape*/};
 
 struct TensorData {
     TensorType type;
-    std::vector<char> raw;
+    std::string raw;
 };
 
 class Value : public INode {
@@ -53,8 +52,6 @@ class Value : public INode {
 
     ~Value() override = default;
 
-    bool IsValue() const override { return true; }
-
     BelongTo GetBelongsTo() const { return belongs_; }
 
     void SetBelongsTo(BelongTo b) { belongs_ = b; }
@@ -70,9 +67,7 @@ class Value : public INode {
         initializer_data_ = std::move(data);
     }
 
-    std::string ToStr() const override {
-    return "Value(" + Name() + ")";
-    }
+    std::string ToStr() const override { return "Value(" + Name() + ")"; }
 
   private:
     BelongTo belongs_;
@@ -95,35 +90,23 @@ class IOperation : public INode {
     ~IOperation() override = default;
 };
 
-enum class OpType {
-    kAdd,
-    kMul,
-    kConv,
-    kRelu,
-    kMatMul,
-    kGemm,
-    kTranspose,
-};
-
 class Operation : public IOperation {
+  public:
+    enum class OpType {
+        kAdd,
+        kMul,
+        kConv,
+        kRelu,
+        kMatMul,
+        kGemm,
+        kTranspose,
+    };
+
   private:
     OpType op_type_;
     std::vector<Value*> inputs_;
     std::vector<Value*> outputs_;
     AttributeMap attrs_;
-
-    static std::string OpToStr(OpType op) {
-        switch (op) {
-            case OpType::kAdd:       return "Add";
-            case OpType::kMul:       return "Mul";
-            case OpType::kConv:      return "Conv";
-            case OpType::kRelu:      return "Relu";
-            case OpType::kMatMul:    return "MatMul";
-            case OpType::kGemm:      return "Gemm";
-            case OpType::kTranspose: return "Transpose";
-        }
-        return "<unknown>";
-    }
 
     static std::string JoinValues(const std::vector<Value*>& vs) {
         std::string out;
@@ -150,8 +133,21 @@ class Operation : public IOperation {
     const std::vector<Value*>& Outputs() const { return outputs_; }
     const AttributeMap& Attrs() const { return attrs_; }
 
+    static std::string OpTypeToStr(OpType op) {
+        switch (op) {
+            case OpType::kAdd:       return "Add";
+            case OpType::kMul:       return "Mul";
+            case OpType::kConv:      return "Conv";
+            case OpType::kRelu:      return "Relu";
+            case OpType::kMatMul:    return "MatMul";
+            case OpType::kGemm:      return "Gemm";
+            case OpType::kTranspose: return "Transpose";
+        }
+        return "<unknown>";
+    }
+
     std::string ToStr() const override {
-        return OpToStr(op_type_) + "(" + JoinValues(inputs_) + ") -> "
+        return OpTypeToStr(op_type_) + "(" + JoinValues(inputs_) + ") -> "
                                        + JoinValues(outputs_);
     }
 };

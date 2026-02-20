@@ -1,4 +1,5 @@
 #include "graph/graph.hpp"
+#include "graph/node.hpp"
 
 #include <algorithm>
 #include <sstream>
@@ -23,19 +24,6 @@ std::string EscapeDot(std::string_view s) {
         }
     }
     return out;
-}
-
-std::string OpTypeToStr(OpType op) {
-    switch (op) {
-        case OpType::kAdd:       return "Add";
-        case OpType::kMul:       return "Mul";
-        case OpType::kConv:      return "Conv";
-        case OpType::kRelu:      return "Relu";
-        case OpType::kMatMul:    return "MatMul";
-        case OpType::kGemm:      return "Gemm";
-        case OpType::kTranspose: return "Transpose";
-    }
-    return "<unknown>";
 }
 
 template <class T>
@@ -177,7 +165,7 @@ std::string Graph::ToDot(const DotOptions& opt) const {
         }
 
         if (const auto* op = dynamic_cast<const Operation*>(n)) {
-            std::string label = OpTypeToStr(op->Type());
+            std::string label = Operation::OpTypeToStr(op->Type());
             label += "\\n";
             label += op->Name();
 

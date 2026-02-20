@@ -35,7 +35,7 @@ int main(int argc, const char* argv[]) {
     if (argc < 2) {
         std::cerr << 
             "ERROR: not enough args\n" 
-            "   usage: " << argv[0]  << " <model_path> [--dot out.dot] [--svg out.svg]\n";
+            "   usage: " << argv[0]  << " <model_path> [--dot <dot_file>] [--svg <svg_file>]\n";
 
         return EXIT_FAILURE;
     }

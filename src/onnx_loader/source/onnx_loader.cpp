@@ -121,15 +121,16 @@ void Dump(const onnx::ModelProto& model) {
     }
 }
 
-OpType StrToOp(const std::string& op_type) {
-    std::unordered_map<std::string_view, OpType> str_to_op = {
-        {"Add",       OpType::kAdd      },
-        {"MatMul",    OpType::kMatMul   },
-        {"Transpose", OpType::kTranspose},
-        {"Mul",       OpType::kMul      },
-        {"Conv",      OpType::kConv     },
-        {"Relu",      OpType::kRelu     },
-        {"Gemm",      OpType::kGemm     },
+Operation::OpType StrToOp(const std::string& op_type) {
+    using enum Operation::OpType;
+    std::unordered_map<std::string_view, Operation::OpType> str_to_op = {
+        {"Add",       kAdd      },
+        {"MatMul",    kMatMul   },
+        {"Transpose", kTranspose},
+        {"Mul",       kMul      },
+        {"Conv",      kConv     },
+        {"Relu",      kRelu     },
+        {"Gemm",      kGemm     },
     };
 
     auto it = str_to_op.find(op_type);
@@ -137,23 +138,6 @@ OpType StrToOp(const std::string& op_type) {
         throw std::runtime_error{"Unsupported op_type: " + op_type};
     }
     return it->second;
-}
-
-int BelongPriority(Value::BelongTo b) {
-    switch (b) {
-        case Value::BelongTo::kInternal:    return 0;
-        case Value::BelongTo::kInput:       return 1;
-        case Value::BelongTo::kOutput:      return 2;
-        case Value::BelongTo::kInitializer: return 3;
-    }
-    return 0;
-}
-
-void UpgradeBelong(Value* val, Value::BelongTo b) {
-    if (val == nullptr) return;
-    if (BelongPriority(b) > BelongPriority(val->GetBelongsTo())) {
-        val->SetBelongsTo(b);
-    }
 }
 
 void AddOpNode(Graph* graph, const onnx::NodeProto& g_node) {
@@ -164,17 +148,17 @@ void AddOpNode(Graph* graph, const onnx::NodeProto& g_node) {
         throw std::runtime_error{"Duplicate ONNX node name: " + g_node.name()};
     }
 
-    OpType op = StrToOp(g_node.op_type());
+    Operation::OpType op = StrToOp(g_node.op_type());
     std::string name = g_node.name();
 
     auto find = [graph](const std::string& v_name) {
-    if (v_name.empty()) return static_cast<Value*>(nullptr);
+        if (v_name.empty()) return static_cast<Value*>(nullptr);
 
-    INode* node_ptr = graph->FindByName(v_name);
-    if (node_ptr != nullptr) {
-        return static_cast<Value*>(node_ptr);
-    }
-    return graph->AddNode<Value>(v_name, Value::BelongTo::kInternal);
+        INode* node_ptr = graph->FindByName(v_name);
+        if (node_ptr != nullptr) {
+            return static_cast<Value*>(node_ptr);
+        }
+        return graph->AddNode<Value>(v_name, Value::BelongTo::kInternal);
     };
 
     std::vector<Value*> inputs;
@@ -211,13 +195,12 @@ Graph OnnxLoader::ParseRaw(const std::string& model_raw) {
     for (const onnx::NodeProto& g_node: onnx_graph.node()) {
         for (const std::string& n_input: g_node.input()) {
             if (n_input.empty()) continue;
-            Value* val = graph.AddNode<Value>(n_input, Value::BelongTo::kInternal);
-            UpgradeBelong(val, Value::BelongTo::kInternal);
+            graph.AddNode<Value>(n_input, Value::BelongTo::kInternal);
         }
+
         for (const std::string& n_output: g_node.output()) {
             if (n_output.empty()) continue;
-            Value* val = graph.AddNode<Value>(n_output, Value::BelongTo::kInternal);
-            UpgradeBelong(val, Value::BelongTo::kInternal);
+            graph.AddNode<Value>(n_output, Value::BelongTo::kInternal);
         }
     }
 
@@ -226,8 +209,7 @@ Graph OnnxLoader::ParseRaw(const std::string& model_raw) {
 
         if (init_tensor.has_raw_data()) {
             TensorData data;
-            const std::string& raw = init_tensor.raw_data();
-            data.raw.assign(raw.begin(), raw.end());
+            data.raw = init_tensor.raw_data();
             opt = std::move(data);
         }
 
@@ -236,19 +218,16 @@ Graph OnnxLoader::ParseRaw(const std::string& model_raw) {
             graph.AddNode<Value>(init_tensor.name(), Value::BelongTo::kInitializer, std::move(opt));
         } else {
             Value* val = static_cast<Value*>(node_ptr);
-            UpgradeBelong(val, Value::BelongTo::kInitializer);
             val->MergeInitializerData(std::move(opt));
         }
     }
 
     for (const onnx::NodeProto& g_node: onnx_graph.node()) {
         for (const std::string& n_input: g_node.input()) {
-            Value* val = graph.AddNode<Value>(n_input, Value::BelongTo::kInternal);
-            UpgradeBelong(val, Value::BelongTo::kInternal);
+            graph.AddNode<Value>(n_input, Value::BelongTo::kInternal);
         }
         for (const std::string& n_output: g_node.output()) {
-            Value* val = graph.AddNode<Value>(n_output, Value::BelongTo::kInternal);
-            UpgradeBelong(val, Value::BelongTo::kInternal);
+            graph.AddNode<Value>(n_output, Value::BelongTo::kInternal);
         }
     }
 
