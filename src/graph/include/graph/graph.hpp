@@ -7,6 +7,9 @@
 #include <cstdint>
 #include <type_traits>
 #include <unordered_map>
+#include <stdexcept>
+
+#include <spdlog/spdlog.h>
 
 #include "graph/node.hpp"
 
@@ -40,11 +43,22 @@ class NodeContainer {
     template <typename NodeT, typename... Args> 
     NodeT* AddNode(const std::string& name, Args&&... args) {
         static_assert(std::is_base_of_v<INode, NodeT>, "NodeT should be derived from INode");
-        
-        if constexpr (std::is_same_v<NodeT, Value>) { // Value nodes can be tried to added multiple times
+
+        if constexpr (std::is_same_v<NodeT, Value>) {
+            auto pull_belong = [](
+                [[maybe_unused]] const std::string& name,
+                Value::BelongTo belong,
+                [[maybe_unused]] std::optional<TensorData> data = std::nullopt
+            ){
+                return belong;
+            };
+
             auto&& node_it = name_table_.find(name);
             if (node_it != name_table_.end()) {
-                return static_cast<NodeT*>(node_it->second);
+                Value::BelongTo belong = pull_belong(name, std::forward<Args>(args)...);
+                Value* value = static_cast<Value*>(node_it->second);
+                value->UpgradeBelongsTo(belong);
+                return value;
             }
         }
 
@@ -66,7 +80,7 @@ class NodeContainer {
         return raw_ptr;
     }
 
-    bool Contains(const std::string& name) {
+    bool Contains(const std::string& name) const {
         return name_table_.contains(name);
     }
 
@@ -92,6 +106,15 @@ class NodeContainer {
     const_iterator end() const { return nodes_.end(); }
 };
 
+struct DotOptions {
+    bool show_values = true;
+    bool show_attrs = true;
+    bool show_edge_indices = true;
+    size_t max_attr_chars = 140;
+    size_t max_attr_items = 16;
+    bool rank_left_to_right = false;
+};
+
 class Graph {
   private:
     NodeContainer nodes_;
@@ -105,6 +128,7 @@ class Graph {
 
     auto Contains(const std::string& name) { return nodes_.Contains(name); }
     auto FindByName(const std::string& name) { return nodes_.FindByName(name); }
+    std::string ToDot(const DotOptions& opt = {}) const;
 
     using const_iterator = NodeContainer::const_iterator;
     const_iterator begin() const { return nodes_.begin(); }

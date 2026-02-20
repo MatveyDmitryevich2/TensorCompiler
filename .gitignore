@@ -6,3 +6,7 @@ __pycache__
 
 # models
 *.onnx
+
+# dot
+*.dot
+*.svg

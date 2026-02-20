@@ -15,4 +15,6 @@ target_link_libraries(graph
         tc-flags
 
         spdlog
+    PUBLIC
+        onnx_proto
 )
