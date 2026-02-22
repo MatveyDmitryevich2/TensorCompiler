@@ -31,3 +31,7 @@ jobs:
             -DCMAKE_C_COMPILER="${{matrix.compiler.cc}}" \
             -DCMAKE_CXX_COMPILER="${{matrix.compiler.cxx}}"
           cmake --build build --parallel 4
+
+      - name: test
+        run: |
+          ./run_tests.sh
