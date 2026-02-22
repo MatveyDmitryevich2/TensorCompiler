@@ -64,6 +64,7 @@ class Attribute {
                 "Attribute '" + name_ + "' is not " + AttrTypeToStr<T>() 
             }; 
         }
+        return *p;
     }
 };
 

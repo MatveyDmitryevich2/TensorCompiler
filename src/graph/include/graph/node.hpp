@@ -15,7 +15,7 @@
 namespace tc {
 
 class INode {
-  private:
+  protected:
     std::string name_;
 
   public:
