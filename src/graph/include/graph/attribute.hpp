@@ -41,7 +41,7 @@ class Attribute {
     const AttrValue& GetValue() const { return value_; }
   private:
     template <typename T>
-    constexpr std::string_view AttrTypeToStr() {
+    constexpr std::string_view AttrTypeToStr() const {
 #define DEF_ATTR_TYPE_TO_STR(type_) else if (std::is_same_v<T, type_>) { return (#type_); }
 
         if (0) { return ""; }
@@ -60,9 +60,10 @@ class Attribute {
     const T& As() const {
         const T* p = std::get_if<T>(&value_);
         if (p == nullptr) { 
-            throw std::runtime_error{
-                "Attribute '" + name_ + "' is not " + AttrTypeToStr<T>() 
-            }; 
+            throw std::runtime_error(
+                std::string("Attribute '") + name_ +
+                "' is not " + std::string(AttrTypeToStr<T>())
+            ); 
         }
         return *p;
     }

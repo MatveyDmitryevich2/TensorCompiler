@@ -24,10 +24,20 @@ class NodeContainer {
     NodesOwner nodes_;
     NameTable name_table_;
 
+    static void MergeExistingValue(Value* value, Value::BelongTo belong) {
+        value->UpgradeBelongsTo(belong);
+    }
+
+    static void MergeExistingValue(Value* value,
+                                   Value::BelongTo belong,
+                                   std::optional<TensorData> data) {
+        value->UpgradeBelongsTo(belong);
+        value->MergeInitializerData(std::move(data));
+    }
+
   public:
     using const_iterator = std::vector<INode*>::const_iterator;
 
-    // FIXME: implement rule of 5
     NodeContainer() {}
     NodeContainer(const NodeContainer& other) = delete;
     NodeContainer& operator=(const NodeContainer& other) = delete;
@@ -40,24 +50,15 @@ class NodeContainer {
         }
     }
 
-    template <typename NodeT, typename... Args> 
+    template <typename NodeT, typename... Args>
     NodeT* AddNode(const std::string& name, Args&&... args) {
         static_assert(std::is_base_of_v<INode, NodeT>, "NodeT should be derived from INode");
 
         if constexpr (std::is_same_v<NodeT, Value>) {
-            auto pull_belong = [](
-                [[maybe_unused]] const std::string& name,
-                Value::BelongTo belong,
-                [[maybe_unused]] std::optional<TensorData> data = std::nullopt
-            ){
-                return belong;
-            };
-
             auto&& node_it = name_table_.find(name);
             if (node_it != name_table_.end()) {
-                Value::BelongTo belong = pull_belong(name, std::forward<Args>(args)...);
                 Value* value = static_cast<Value*>(node_it->second);
-                value->UpgradeBelongsTo(belong);
+                MergeExistingValue(value, std::forward<Args>(args)...);
                 return value;
             }
         }
@@ -86,9 +87,19 @@ class NodeContainer {
 
     INode* FindByName(const std::string& name) {
         auto&& node = name_table_.find(name);
-        if (node == name_table_.end()) { 
+        if (node == name_table_.end()) {
             SPDLOG_TRACE("Not found {}", name);
-            return nullptr; 
+            return nullptr;
+        }
+
+        return node->second;
+    }
+
+    const INode* FindByName(const std::string& name) const {
+        auto&& node = name_table_.find(name);
+        if (node == name_table_.end()) {
+            SPDLOG_TRACE("Not found {}", name);
+            return nullptr;
         }
 
         return node->second;
@@ -121,13 +132,14 @@ class Graph {
   public:
     Graph() {}
 
-    template <typename NodeT, typename... Args> 
+    template <typename NodeT, typename... Args>
     NodeT* AddNode(const std::string& name, Args&&... args) {
         return nodes_.AddNode<NodeT>(name, std::forward<Args>(args)...);
     }
 
-    auto Contains(const std::string& name) { return nodes_.Contains(name); }
-    auto FindByName(const std::string& name) { return nodes_.FindByName(name); }
+    bool Contains(const std::string& name) const { return nodes_.Contains(name); }
+    INode* FindByName(const std::string& name) { return nodes_.FindByName(name); }
+    const INode* FindByName(const std::string& name) const { return nodes_.FindByName(name); }
     std::string ToDot(const DotOptions& opt = {}) const;
 
     using const_iterator = NodeContainer::const_iterator;

@@ -33,4 +33,5 @@ target_link_libraries(tc.x
         spdlog
 )
 
+enable_testing()
 add_subdirectory(tests)

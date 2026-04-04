@@ -7,12 +7,71 @@
 #include <cstdint>
 #include <optional>
 #include <utility>
+#include <sstream>
 
 #include <spdlog/spdlog.h>
 
 #include "graph/attribute.hpp"
 
 namespace tc {
+
+enum class TensorElemType {
+    kUnknown,
+    kFloat32,
+    kFloat64,
+    kInt32,
+    kInt64,
+    kBool,
+};
+
+class TensorType {
+  public:
+    TensorType() = default;
+    TensorType(TensorElemType elem_type, std::vector<int64_t> shape)
+        : elem_type_{elem_type}, shape_{std::move(shape)} {}
+
+    TensorElemType ElemType() const { return elem_type_; }
+    const std::vector<int64_t>& Shape() const { return shape_; }
+
+    bool HasKnownElemType() const { return elem_type_ != TensorElemType::kUnknown; }
+    bool HasRank() const { return !shape_.empty(); }
+
+    static std::string ElemTypeToStr(TensorElemType elem_type) {
+        switch (elem_type) {
+            case TensorElemType::kUnknown: return "unknown";
+            case TensorElemType::kFloat32: return "f32";
+            case TensorElemType::kFloat64: return "f64";
+            case TensorElemType::kInt32:   return "i32";
+            case TensorElemType::kInt64:   return "i64";
+            case TensorElemType::kBool:    return "i1";
+        }
+        return "unknown";
+    }
+
+    std::string ToStr() const {
+        std::ostringstream oss;
+        oss << ElemTypeToStr(elem_type_) << "[";
+        for (size_t i = 0; i < shape_.size(); ++i) {
+            if (i != 0) oss << ",";
+            if (shape_[i] < 0) {
+                oss << "?";
+            } else {
+                oss << shape_[i];
+            }
+        }
+        oss << "]";
+        return oss.str();
+    }
+
+  private:
+    TensorElemType elem_type_{TensorElemType::kUnknown};
+    std::vector<int64_t> shape_{};
+};
+
+struct TensorData {
+    TensorType type;
+    std::string raw;
+};
 
 class INode {
   protected:
@@ -29,13 +88,6 @@ class INode {
     const std::string& Name() const { return name_; }
 };
 
-class TensorType {/*dtype,shape*/};
-
-struct TensorData {
-    TensorType type;
-    std::string raw;
-};
-
 class Value : public INode {
   public:
     enum class BelongTo {
@@ -48,7 +100,11 @@ class Value : public INode {
     Value(const std::string& name,
           BelongTo belong,
           std::optional<TensorData> data = std::nullopt)
-      : INode{name}, belongs_{belong}, initializer_data_{std::move(data)} {}
+      : INode{name}, belongs_{belong}, initializer_data_{std::move(data)} {
+        if (initializer_data_.has_value()) {
+            tensor_type_ = initializer_data_->type;
+        }
+      }
 
     ~Value() override = default;
 
@@ -62,17 +118,51 @@ class Value : public INode {
         }
     }
 
+    bool HasTensorType() const { return tensor_type_.has_value(); }
+    const std::optional<TensorType>& MaybeTensorType() const { return tensor_type_; }
+
+    void MergeTensorType(const TensorType& type) {
+        if (!tensor_type_.has_value() || !tensor_type_->HasKnownElemType()) {
+            tensor_type_ = type;
+            return;
+        }
+
+        if (tensor_type_->Shape().empty() && !type.Shape().empty()) {
+            tensor_type_ = type;
+            return;
+        }
+
+        std::vector<int64_t> merged_shape = tensor_type_->Shape();
+        if (merged_shape.size() == type.Shape().size()) {
+            bool improved = false;
+            for (size_t i = 0; i < merged_shape.size(); ++i) {
+                if (merged_shape[i] < 0 && type.Shape()[i] >= 0) {
+                    merged_shape[i] = type.Shape()[i];
+                    improved = true;
+                }
+            }
+            if (improved) {
+                tensor_type_ = TensorType{tensor_type_->ElemType(), std::move(merged_shape)};
+            }
+        }
+    }
+
     void MergeInitializerData(std::optional<TensorData> data) {
         if (!data.has_value()) return;
         initializer_data_ = std::move(data);
+        tensor_type_ = initializer_data_->type;
     }
+
+    bool HasInitializerData() const { return initializer_data_.has_value(); }
+    const std::optional<TensorData>& InitializerData() const { return initializer_data_; }
 
     std::string ToStr() const override { return "Value(" + Name() + ")"; }
 
   private:
     BelongTo belongs_;
+    std::optional<TensorType> tensor_type_;
     std::optional<TensorData> initializer_data_;
-    
+
     static int BelongPriority(BelongTo b) {
         switch (b) {
             case BelongTo::kInternal:    return 0;

@@ -2,7 +2,6 @@
 
 #include <stdexcept>
 #include <string>
-#include <iostream>
 #include <unordered_map>
 #include <string_view>
 #include <vector>
@@ -22,6 +21,102 @@ namespace tc {
 
 namespace {
 
+TensorElemType ParseElemType(int onnx_elem_type) {
+    switch (onnx_elem_type) {
+        case onnx::TensorProto_DataType_FLOAT:
+            return TensorElemType::kFloat32;
+        case onnx::TensorProto_DataType_DOUBLE:
+            return TensorElemType::kFloat64;
+        case onnx::TensorProto_DataType_INT32:
+            return TensorElemType::kInt32;
+        case onnx::TensorProto_DataType_INT64:
+            return TensorElemType::kInt64;
+        case onnx::TensorProto_DataType_BOOL:
+            return TensorElemType::kBool;
+        default:
+            return TensorElemType::kUnknown;
+    }
+}
+
+std::vector<int64_t> ParseShape(const onnx::TensorShapeProto& shape_proto) {
+    std::vector<int64_t> shape;
+    shape.reserve(static_cast<size_t>(shape_proto.dim_size()));
+
+    for (const auto& dim : shape_proto.dim()) {
+        if (dim.has_dim_value()) {
+            shape.push_back(static_cast<int64_t>(dim.dim_value()));
+        } else {
+            shape.push_back(-1);
+        }
+    }
+
+    return shape;
+}
+
+std::optional<TensorType> ParseValueType(const onnx::ValueInfoProto& value_info) {
+    if (!value_info.has_type()) return std::nullopt;
+    if (!value_info.type().has_tensor_type()) return std::nullopt;
+
+    const auto& tensor_type = value_info.type().tensor_type();
+    TensorElemType elem_type = TensorElemType::kUnknown;
+    if (tensor_type.has_elem_type()) {
+        elem_type = ParseElemType(tensor_type.elem_type());
+    }
+
+    std::vector<int64_t> shape;
+    if (tensor_type.has_shape()) {
+        shape = ParseShape(tensor_type.shape());
+    }
+
+    return TensorType{elem_type, std::move(shape)};
+}
+
+TensorData ParseTensorData(const onnx::TensorProto& tensor) {
+    std::vector<int64_t> shape;
+    shape.reserve(static_cast<size_t>(tensor.dims_size()));
+    for (int i = 0; i < tensor.dims_size(); ++i) {
+        shape.push_back(static_cast<int64_t>(tensor.dims(i)));
+    }
+
+    std::string raw;
+    if (tensor.has_raw_data()) {
+        raw = tensor.raw_data();
+    }
+
+    return TensorData{TensorType{ParseElemType(tensor.data_type()), std::move(shape)}, std::move(raw)};
+}
+
+Value* EnsureValue(Graph* graph, const std::string& name, Value::BelongTo belong) {
+    if (name.empty()) return nullptr;
+
+    INode* node_ptr = graph->FindByName(name);
+    if (node_ptr == nullptr) {
+        return graph->AddNode<Value>(name, belong);
+    }
+
+    auto* value = dynamic_cast<Value*>(node_ptr);
+    if (value == nullptr) {
+        throw std::runtime_error{"Expected Value node: " + name};
+    }
+
+    value->UpgradeBelongsTo(belong);
+    return value;
+}
+
+void MergeValueInfo(Graph* graph,
+                    const onnx::ValueInfoProto& value_info,
+                    Value::BelongTo belong) {
+    if (value_info.name().empty()) {
+        throw std::runtime_error{"ONNX ValueInfo has empty name"};
+    }
+
+    Value* value = EnsureValue(graph, value_info.name(), belong);
+    std::optional<TensorType> type = ParseValueType(value_info);
+    if (type.has_value()) {
+        value->MergeTensorType(*type);
+    }
+}
+
 AttributeMap ParseAttributes(const onnx::NodeProto& g_node) {
     AttributeMap out;
 
@@ -40,27 +135,37 @@ AttributeMap ParseAttributes(const onnx::NodeProto& g_node) {
             case onnx::AttributeProto::STRING:
                 out.emplace(name, Attribute{name, a.s()});
                 break;
+
             case onnx::AttributeProto::INTS: {
                 std::vector<int64_t> vec;
                 vec.reserve(static_cast<size_t>(a.ints_size()));
-                for (int i = 0; i < a.ints_size(); ++i) vec.push_back(static_cast<int64_t>(a.ints(i)));
+                for (int i = 0; i < a.ints_size(); ++i) {
+                    vec.push_back(static_cast<int64_t>(a.ints(i)));
+                }
                 out.emplace(name, Attribute{name, std::move(vec)});
                 break;
             }
+
             case onnx::AttributeProto::FLOATS: {
                 std::vector<float> vec;
                 vec.reserve(static_cast<size_t>(a.floats_size()));
-                for (int i = 0; i < a.floats_size(); ++i) vec.push_back(a.floats(i));
+                for (int i = 0; i < a.floats_size(); ++i) {
+                    vec.push_back(a.floats(i));
+                }
                 out.emplace(name, Attribute{name, std::move(vec)});
                 break;
             }
+
             case onnx::AttributeProto::STRINGS: {
                 std::vector<std::string> vec;
                 vec.reserve(static_cast<size_t>(a.strings_size()));
-                for (int i = 0; i < a.strings_size(); ++i) vec.push_back(a.strings(i));
+                for (int i = 0; i < a.strings_size(); ++i) {
+                    vec.push_back(a.strings(i));
+                }
                 out.emplace(name, Attribute{name, std::move(vec)});
                 break;
             }
+
             default:
                 throw std::runtime_error{"Unsupported ONNX attribute type: '" + name + "'"};
         }
@@ -69,61 +174,9 @@ AttributeMap ParseAttributes(const onnx::NodeProto& g_node) {
     return out;
 }
 
-
-// FIXME: implement dot dump
-[[deprecated]] void Dump(const onnx::ModelProto& model) {
-    const auto& g = model.graph();
-    for (const auto& i: g.input()) {
-        std::cout << "Value: " << i.name() << "\n";
-        if (i.has_type() && i.type().has_tensor_type()) {
-            const auto& shape = i.type().tensor_type().shape();
-            for (const auto& d: shape.dim()) {
-                std::cout << "    Shape: " 
-                    << (d.has_dim_value() 
-                        ? std::to_string(d.dim_value()) 
-                        : "?") 
-                    << "\n";
-            }
-        }
-    }
-
-    std::cout << "Graph:" << "\n";
-
-    for (const auto& n: g.node()) {
-        std::cout << "    Name: " << n.name() << "\n";
-        std::cout << "    Type: " << n.op_type() << "\n";
-
-        for (const auto& i: n.input()) {
-            std::cout << "        Input: " << i << "\n";
-        }
-
-        for (const auto& o: n.output()) {
-            std::cout << "        Output: " << o << "\n";
-        }
-
-        for (const auto& a: n.attribute()) {
-            std::cout << "        Attribute: " << a.name() << "\n";
-        }
-    }
-
-    for (const auto& o: g.output()) {
-        std::cout << "Value: " << o.name() << "\n";
-        if (o.has_type() && o.type().has_tensor_type()) {
-            const auto& shape = o.type().tensor_type().shape();
-            for (const auto& d: shape.dim()) {
-                std::cout << "    Shape: " 
-                    << (d.has_dim_value() 
-                        ? std::to_string(d.dim_value()) 
-                        : "?") 
-                    << "\n";
-            }
-        }
-    }
-}
-
 Operation::OpType StrToOp(const std::string& op_type) {
     using enum Operation::OpType;
-    std::unordered_map<std::string_view, Operation::OpType> str_to_op = {
+    static const std::unordered_map<std::string_view, Operation::OpType> str_to_op = {
         {"Add",       kAdd      },
         {"MatMul",    kMatMul   },
         {"Transpose", kTranspose},
@@ -151,31 +204,21 @@ void AddOpNode(Graph* graph, const onnx::NodeProto& g_node) {
     Operation::OpType op = StrToOp(g_node.op_type());
     std::string name = g_node.name();
 
-    auto find = [graph](const std::string& v_name) {
-        if (v_name.empty()) return static_cast<Value*>(nullptr);
-
-        INode* node_ptr = graph->FindByName(v_name);
-        if (node_ptr != nullptr) {
-            return static_cast<Value*>(node_ptr);
-        }
-        return graph->AddNode<Value>(v_name, Value::BelongTo::kInternal);
-    };
-
     std::vector<Value*> inputs;
     std::vector<Value*> outputs;
 
-    for (const auto& i : g_node.input()) {
-        inputs.push_back(find(i));
+    for (const auto& input_name : g_node.input()) {
+        inputs.push_back(EnsureValue(graph, input_name, Value::BelongTo::kInternal));
     }
-    for (const auto& o : g_node.output()) {
-        outputs.push_back(find(o));
+    for (const auto& output_name : g_node.output()) {
+        outputs.push_back(EnsureValue(graph, output_name, Value::BelongTo::kInternal));
     }
-    
+
     AttributeMap attrs = ParseAttributes(g_node);
     graph->AddNode<Operation>(name, op, inputs, outputs, attrs);
 }
 
-} // namaspace
+} // namespace
 
 Graph OnnxLoader::ParseRaw(const std::string& model_raw) {
     hlp::trace_call();
@@ -187,47 +230,37 @@ Graph OnnxLoader::ParseRaw(const std::string& model_raw) {
     }
 
     Graph graph;
-
     const onnx::GraphProto& onnx_graph = model.graph();
 
-    for (const onnx::NodeProto& g_node: onnx_graph.node()) {
-        for (const std::string& n_input: g_node.input()) {
-            if (n_input.empty()) continue;
-            graph.AddNode<Value>(n_input, Value::BelongTo::kInternal);
-        }
+    for (const onnx::ValueInfoProto& input : onnx_graph.input()) {
+        MergeValueInfo(&graph, input, Value::BelongTo::kInput);
+    }
 
-        for (const std::string& n_output: g_node.output()) {
-            if (n_output.empty()) continue;
-            graph.AddNode<Value>(n_output, Value::BelongTo::kInternal);
-        }
+    for (const onnx::ValueInfoProto& output : onnx_graph.output()) {
+        MergeValueInfo(&graph, output, Value::BelongTo::kOutput);
+    }
+
+    for (const onnx::ValueInfoProto& value_info : onnx_graph.value_info()) {
+        MergeValueInfo(&graph, value_info, Value::BelongTo::kInternal);
     }
 
     for (const onnx::TensorProto& init_tensor : onnx_graph.initializer()) {
-        std::optional<TensorData> tensor_data = std::nullopt;
-        if (init_tensor.has_raw_data()) {
-            tensor_data = TensorData{{}, init_tensor.raw_data()};
-        }
+        TensorData tensor_data = ParseTensorData(init_tensor);
+        Value* value = EnsureValue(&graph, init_tensor.name(), Value::BelongTo::kInitializer);
+        value->UpgradeBelongsTo(Value::BelongTo::kInitializer);
+        value->MergeInitializerData(std::move(tensor_data));
+    }
 
-        // FIXME: ?
-        INode* node_ptr = graph.FindByName(init_tensor.name());
-        if (node_ptr == nullptr) {
-            graph.AddNode<Value>(init_tensor.name(), Value::BelongTo::kInitializer, tensor_data);
-        } else {
-            Value* val = static_cast<Value*>(node_ptr);
-            val->MergeInitializerData(std::move(tensor_data));
+    for (const onnx::NodeProto& g_node : onnx_graph.node()) {
+        for (const std::string& input_name : g_node.input()) {
+            EnsureValue(&graph, input_name, Value::BelongTo::kInternal);
+        }
+        for (const std::string& output_name : g_node.output()) {
+            EnsureValue(&graph, output_name, Value::BelongTo::kInternal);
         }
     }
 
-    for (const onnx::NodeProto& g_node: onnx_graph.node()) {
-        for (const std::string& n_input: g_node.input()) {
-            graph.AddNode<Value>(n_input, Value::BelongTo::kInternal);
-        }
-        for (const std::string& n_output: g_node.output()) {
-            graph.AddNode<Value>(n_output, Value::BelongTo::kInternal);
-        }
-    }
-
-    for (const onnx::NodeProto& g_node: onnx_graph.node()) {
+    for (const onnx::NodeProto& g_node : onnx_graph.node()) {
         AddOpNode(&graph, g_node);
     }
 
