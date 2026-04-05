@@ -6,6 +6,7 @@ target_sources(tc_tests
     PRIVATE
         graph_test.cpp
         loader_test.cpp
+        mlir_backend_test.cpp
 )
 
 target_link_libraries(tc_tests
@@ -14,6 +15,7 @@ target_link_libraries(tc_tests
         helpers
         graph
         onnx_loader
+        mlir_backend
         onnx_proto
 
         GTest::gtest_main
