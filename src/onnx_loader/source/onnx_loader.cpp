@@ -107,14 +107,12 @@ TensorData ParseTensorData(const onnx::TensorProto& tensor) {
 Value* EnsureValue(Graph* graph, const std::string& name, Value::BelongTo belong) {
     if (name.empty()) return nullptr;
 
-    INode* node_ptr = graph->FindByName(name);
-    if (node_ptr == nullptr) {
-        return graph->AddNode<Value>(name, belong);
-    }
-
-    auto* value = dynamic_cast<Value*>(node_ptr);
+    Value* value = graph->FindValueByName(name);
     if (value == nullptr) {
-        throw std::runtime_error{"Expected Value node: " + name};
+        if (graph->Contains(name)) {
+            throw std::runtime_error{"Expected Value node: " + name};
+        }
+        return graph->AddNode<Value>(name, belong);
     }
 
     value->UpgradeBelongsTo(belong);
@@ -193,15 +191,14 @@ AttributeMap ParseAttributes(const onnx::NodeProto& g_node) {
 }
 
 Operation::OpType StrToOp(const std::string& op_type) {
-    using enum Operation::OpType;
     static const std::unordered_map<std::string_view, Operation::OpType> str_to_op = {
-        {"Add",       kAdd      },
-        {"MatMul",    kMatMul   },
-        {"Transpose", kTranspose},
-        {"Mul",       kMul      },
-        {"Conv",      kConv     },
-        {"Relu",      kRelu     },
-        {"Gemm",      kGemm     },
+        {"Add",       Operation::OpType::kAdd      },
+        {"MatMul",    Operation::OpType::kMatMul   },
+        {"Transpose", Operation::OpType::kTranspose},
+        {"Mul",       Operation::OpType::kMul      },
+        {"Conv",      Operation::OpType::kConv     },
+        {"Relu",      Operation::OpType::kRelu     },
+        {"Gemm",      Operation::OpType::kGemm     },
     };
 
     auto it = str_to_op.find(op_type);
@@ -211,25 +208,40 @@ Operation::OpType StrToOp(const std::string& op_type) {
     return it->second;
 }
 
-void AddOpNode(Graph* graph, const onnx::NodeProto& g_node) {
-    if (g_node.name().empty()) {
-        throw std::runtime_error{"ONNX node has empty name: op_type=" + g_node.op_type()};
+std::string MakeOperationName(const Graph& graph, const onnx::NodeProto& g_node, size_t index) {
+    if (!g_node.name().empty()) {
+        return g_node.name();
     }
-    if (graph->FindByName(g_node.name()) != nullptr) {
-        throw std::runtime_error{"Duplicate ONNX node name: " + g_node.name()};
+
+    const std::string prefix = g_node.op_type().empty() ? "op" : g_node.op_type();
+    std::string candidate = prefix + "_" + std::to_string(index);
+    size_t suffix = 0;
+    while (graph.FindByName(candidate) != nullptr) {
+        candidate = prefix + "_" + std::to_string(index) + "_" + std::to_string(++suffix);
+    }
+    return candidate;
+}
+
+void AddOpNode(Graph* graph, const onnx::NodeProto& g_node, size_t index) {
+    const std::string name = MakeOperationName(*graph, g_node, index);
+    if (graph->FindByName(name) != nullptr) {
+        throw std::runtime_error{"Duplicate ONNX node name: " + name};
     }
 
     Operation::OpType op = StrToOp(g_node.op_type());
-    std::string name = g_node.name();
 
     std::vector<Value*> inputs;
     std::vector<Value*> outputs;
 
     for (const auto& input_name : g_node.input()) {
-        inputs.push_back(EnsureValue(graph, input_name, Value::BelongTo::kInternal));
+        if (!input_name.empty()) {
+            inputs.push_back(EnsureValue(graph, input_name, Value::BelongTo::kInternal));
+        }
     }
     for (const auto& output_name : g_node.output()) {
-        outputs.push_back(EnsureValue(graph, output_name, Value::BelongTo::kInternal));
+        if (!output_name.empty()) {
+            outputs.push_back(EnsureValue(graph, output_name, Value::BelongTo::kInternal));
+        }
     }
 
     AttributeMap attrs = ParseAttributes(g_node);
@@ -271,15 +283,19 @@ Graph OnnxLoader::ParseRaw(const std::string& model_raw) {
 
     for (const onnx::NodeProto& g_node : onnx_graph.node()) {
         for (const std::string& input_name : g_node.input()) {
-            EnsureValue(&graph, input_name, Value::BelongTo::kInternal);
+            if (!input_name.empty()) {
+                EnsureValue(&graph, input_name, Value::BelongTo::kInternal);
+            }
         }
         for (const std::string& output_name : g_node.output()) {
-            EnsureValue(&graph, output_name, Value::BelongTo::kInternal);
+            if (!output_name.empty()) {
+                EnsureValue(&graph, output_name, Value::BelongTo::kInternal);
+            }
         }
     }
 
-    for (const onnx::NodeProto& g_node : onnx_graph.node()) {
-        AddOpNode(&graph, g_node);
+    for (int i = 0; i < onnx_graph.node_size(); ++i) {
+        AddOpNode(&graph, onnx_graph.node(i), static_cast<size_t>(i));
     }
 
     return graph;

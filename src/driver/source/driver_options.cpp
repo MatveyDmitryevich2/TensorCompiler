@@ -40,6 +40,7 @@ std::string Usage(const char* argv0) {
         << "  --emit-llvm <path>    lower to LLVM IR\n"
         << "  --emit-asm <path>     lower to assembly\n"
         << "  --run                 execute graph with the built-in CPU runtime\n"
+        << "  --run-compiled        compile emitted LLVM IR and execute the native code\n"
         << "  --input <name=path>   load whitespace/comma separated float32 input values\n"
         << "  --output-dir <dir>    write runtime outputs as text files\n"
         << "\n"
@@ -74,6 +75,10 @@ DriverOptions ParseArgs(int argc, const char* argv[]) {
         }
         if (arg == "--run") {
             opt.run = true;
+            continue;
+        }
+        if (arg == "--run-compiled") {
+            opt.run_compiled = true;
             continue;
         }
         if (arg == "--input") {

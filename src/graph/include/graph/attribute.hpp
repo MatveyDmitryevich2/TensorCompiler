@@ -30,8 +30,7 @@ class Attribute {
 
   public:
     Attribute(const std::string& name, AttrValue value)
-        : name_{name}, value_{std::move(value)} 
-    {
+        : name_{name}, value_{std::move(value)} {
         if (name_.empty()) {
             throw std::runtime_error{"Attribute: empty name"};
         }
@@ -41,35 +40,47 @@ class Attribute {
     const AttrValue& GetValue() const { return value_; }
   private:
     template <typename T>
-    constexpr std::string_view AttrTypeToStr() const {
-#define DEF_ATTR_TYPE_TO_STR(type_) else if (std::is_same_v<T, type_>) { return (#type_); }
-
-        if (0) { return ""; }
-        DEF_ATTR_TYPE_TO_STR(int64_t)
-        DEF_ATTR_TYPE_TO_STR(float)
-        DEF_ATTR_TYPE_TO_STR(std::string)
-        DEF_ATTR_TYPE_TO_STR(std::vector<int64_t>)
-        DEF_ATTR_TYPE_TO_STR(std::vector<float>)
-        DEF_ATTR_TYPE_TO_STR(std::vector<std::string>)
-        else { return "<unknown>"; }
-
-#undef DEF_ATTR_TYPE_TO_STR
+    static constexpr std::string_view AttrTypeToStr() {
+        if constexpr (std::is_same_v<T, int64_t>) {
+            return "int64_t";
+        } else if constexpr (std::is_same_v<T, float>) {
+            return "float";
+        } else if constexpr (std::is_same_v<T, std::string>) {
+            return "std::string";
+        } else if constexpr (std::is_same_v<T, std::vector<int64_t>>) {
+            return "std::vector<int64_t>";
+        } else if constexpr (std::is_same_v<T, std::vector<float>>) {
+            return "std::vector<float>";
+        } else if constexpr (std::is_same_v<T, std::vector<std::string>>) {
+            return "std::vector<std::string>";
+        } else {
+            return "<unknown>";
+        }
     }
   public:
     template <typename T>
     const T& As() const {
         const T* p = std::get_if<T>(&value_);
-        if (p == nullptr) { 
+        if (p == nullptr) {
             throw std::runtime_error(
                 std::string("Attribute '") + name_ +
                 "' is not " + std::string(AttrTypeToStr<T>())
-            ); 
+            );
         }
         return *p;
     }
 };
 
 using AttributeMap = std::unordered_map<std::string, Attribute>;
+
+template <typename T>
+T GetAttrOr(const AttributeMap& attrs, const std::string& name, T default_value) {
+    auto it = attrs.find(name);
+    if (it == attrs.end()) {
+        return default_value;
+    }
+    return it->second.As<T>();
+}
 
 } // namespace tc
 

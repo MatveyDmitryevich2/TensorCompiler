@@ -2,13 +2,11 @@
 #define MLIR_BACKEND_INTERNAL_HPP_
 
 #include <functional>
-#include <optional>
 #include <cstddef>
 #include <sstream>
 #include <string>
 #include <string_view>
 #include <unordered_map>
-#include <utility>
 #include <vector>
 
 #include "graph/graph.hpp"
@@ -26,25 +24,12 @@ std::string MemRefTypeToMlir(const TensorType& type);
 std::string DenseLiteral(const TensorData& data);
 std::string SanitizeIdentifier(std::string_view value, std::string_view prefix);
 
-std::vector<const Value*> CollectValuesByBelong(const Graph& graph, Value::BelongTo belong);
-std::vector<const Value*> CollectInternalValues(const Graph& graph);
-std::vector<const Operation*> CollectOperations(const Graph& graph);
-
 const TensorType& RequireTensorType(const Value& value);
 void RequireArity(const Operation& op, size_t inputs, size_t outputs);
 void RequireInputRange(const Operation& op, size_t min_inputs, size_t max_inputs, size_t outputs);
 void RequireRank(const Operation& op, const TensorType& type, size_t rank, std::string_view role);
 std::string ScalarMemRefType(TensorElemType elem_type);
 std::string JoinStrings(const std::vector<std::string>& values, std::string_view sep);
-
-template <typename T>
-T GetAttr(const AttributeMap& attrs, const std::string& name, T default_value) {
-    auto it = attrs.find(name);
-    if (it == attrs.end()) {
-        return default_value;
-    }
-    return it->second.As<T>();
-}
 
 class ModuleEmitter {
   public:

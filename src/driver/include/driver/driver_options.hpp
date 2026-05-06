@@ -19,11 +19,13 @@ struct DriverOptions {
     std::string opt_level = "-O2";
 
     bool run = false;
+    bool run_compiled = false;
     std::vector<std::pair<std::string, std::string>> input_paths;
     std::string output_dir;
 
     bool NeedsMlir() const {
-        return !emit_mlir_path.empty() || !emit_llvm_path.empty() || !emit_asm_path.empty();
+        return !emit_mlir_path.empty() || !emit_llvm_path.empty() ||
+               !emit_asm_path.empty() || run_compiled;
     }
 };
 

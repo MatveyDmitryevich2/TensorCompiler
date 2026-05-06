@@ -1,16 +1,18 @@
 #include "mlir_backend_internal.hpp"
 
+#include <utility>
+
 namespace tc::detail {
 
 ModuleEmitter::ModuleEmitter(const Graph& graph, MlirEmitterOptions options)
     : graph_{graph}, options_{std::move(options)} {}
 
 std::string ModuleEmitter::Emit() {
-    inputs_ = CollectValuesByBelong(graph_, Value::BelongTo::kInput);
-    outputs_ = CollectValuesByBelong(graph_, Value::BelongTo::kOutput);
-    initializers_ = CollectValuesByBelong(graph_, Value::BelongTo::kInitializer);
-    temporaries_ = CollectInternalValues(graph_);
-    operations_ = CollectOperations(graph_);
+    inputs_ = graph_.ValuesByBelong(Value::BelongTo::kInput);
+    outputs_ = graph_.ValuesByBelong(Value::BelongTo::kOutput);
+    initializers_ = graph_.ValuesByBelong(Value::BelongTo::kInitializer);
+    temporaries_ = graph_.ValuesByBelong(Value::BelongTo::kInternal);
+    operations_ = graph_.Operations();
 
     ValidateGraph();
 

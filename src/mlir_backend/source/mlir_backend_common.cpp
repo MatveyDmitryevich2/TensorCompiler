@@ -138,18 +138,6 @@ std::string MakeDenseLiteral(const std::string& raw,
     return "dense<" + body + ">";
 }
 
-template <typename NodeT, typename Predicate>
-std::vector<const NodeT*> CollectNodes(const Graph& graph, Predicate predicate) {
-    std::vector<const NodeT*> nodes;
-    for (const INode* node : graph) {
-        const auto* typed = dynamic_cast<const NodeT*>(node);
-        if (typed != nullptr && predicate(*typed)) {
-            nodes.push_back(typed);
-        }
-    }
-    return nodes;
-}
-
 } // namespace
 
 std::string MemRefTypeToMlir(const TensorType& type) {
@@ -206,22 +194,6 @@ std::string SanitizeIdentifier(std::string_view value, std::string_view prefix) 
         out = std::string(prefix) + "_" + out;
     }
     return out;
-}
-
-std::vector<const Value*> CollectValuesByBelong(const Graph& graph, Value::BelongTo belong) {
-    return CollectNodes<Value>(graph, [belong](const Value& value) {
-        return value.GetBelongsTo() == belong;
-    });
-}
-
-std::vector<const Value*> CollectInternalValues(const Graph& graph) {
-    return CollectValuesByBelong(graph, Value::BelongTo::kInternal);
-}
-
-std::vector<const Operation*> CollectOperations(const Graph& graph) {
-    return CollectNodes<Operation>(graph, [](const Operation&) {
-        return true;
-    });
 }
 
 const TensorType& RequireTensorType(const Value& value) {

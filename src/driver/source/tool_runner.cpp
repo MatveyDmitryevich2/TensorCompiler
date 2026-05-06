@@ -1,11 +1,15 @@
 #include "driver/tool_runner.hpp"
 
+#include "tool_runner_internal.hpp"
+
+#include <chrono>
 #include <cstdlib>
 #include <fstream>
 #include <iostream>
 #include <sstream>
 #include <stdexcept>
 #include <string>
+#include <string_view>
 #include <vector>
 
 #include <spdlog/common.h>
@@ -64,6 +68,15 @@ void CopyFileToTarget(const fs::path& src, const std::string& dst) {
     WriteTextFile(dst, ReadTextFile(src));
 }
 
+fs::path MakeTempDir(std::string_view prefix) {
+    const auto ticks = std::chrono::steady_clock::now().time_since_epoch().count();
+    fs::path dir = fs::temp_directory_path() / (std::string(prefix) + "_" + std::to_string(ticks));
+    fs::create_directories(dir);
+    return dir;
+}
+
+} // namespace
+
 void RunCommand(const std::vector<std::string>& argv) {
     const std::string cmd = JoinCommand(argv);
     spdlog::info("run: {}", cmd);
@@ -73,7 +86,53 @@ void RunCommand(const std::vector<std::string>& argv) {
     }
 }
 
-} // namespace
+void RemoveTree(const fs::path& path) {
+    std::error_code ec;
+    fs::remove_all(path, ec);
+}
+
+std::vector<std::string> BuildLlcCommand(const DriverOptions& opt,
+                                         const fs::path& input,
+                                         std::string_view filetype,
+                                         const fs::path& output) {
+    std::vector<std::string> cmd{kLlc, input.string(), opt.opt_level};
+    if (!opt.target_triple.empty()) {
+        cmd.push_back("-mtriple=" + opt.target_triple);
+    }
+    if (!opt.mcpu.empty()) {
+        cmd.push_back("-mcpu=" + opt.mcpu);
+    }
+    cmd.push_back("-filetype=" + std::string(filetype));
+    cmd.push_back("-o");
+    cmd.push_back(output.string());
+    return cmd;
+}
+
+LoweredPaths LowerMlirToLlvm(const std::string& mlir_text) {
+    LoweredPaths paths;
+    paths.temp_dir = MakeTempDir("tc_mlir_pipeline");
+    paths.input_mlir = paths.temp_dir / "input.mlir";
+    paths.lowered_mlir = paths.temp_dir / "lowered.mlir";
+    paths.llvm_ir = paths.temp_dir / "module.ll";
+
+    WriteTextFile(paths.input_mlir.string(), mlir_text);
+
+    std::vector<std::string> mlir_opt_cmd{kMlirOpt, paths.input_mlir.string()};
+    AppendLlvmLoweringPipeline(&mlir_opt_cmd);
+    mlir_opt_cmd.push_back("-o");
+    mlir_opt_cmd.push_back(paths.lowered_mlir.string());
+    RunCommand(mlir_opt_cmd);
+
+    std::vector<std::string> mlir_translate_cmd{
+        kMlirTranslate,
+        paths.lowered_mlir.string(),
+        "--mlir-to-llvmir",
+        "-o",
+        paths.llvm_ir.string()
+    };
+    RunCommand(mlir_translate_cmd);
+    return paths;
+}
 
 void SetupLogging(int argc, const char* argv[]) {
     fs::create_directories(fs::path{kLogPath}.parent_path());
@@ -109,6 +168,11 @@ void WriteTextFile(const std::string& path, const std::string& text) {
         return;
     }
 
+    const fs::path parent = fs::path{path}.parent_path();
+    if (!parent.empty()) {
+        fs::create_directories(parent);
+    }
+
     std::ofstream out{path, std::ios::binary};
     if (!out.is_open()) {
         throw std::runtime_error{"unable to open file for writing: " + path};
@@ -124,50 +188,19 @@ void LowerToLlvmAndAsm(const DriverOptions& opt, const std::string& mlir_text) {
         return;
     }
 
-    fs::path temp_dir = fs::temp_directory_path() / "tc_mlir_pipeline";
-    fs::create_directories(temp_dir);
-
-    const fs::path input_mlir = temp_dir / "input.mlir";
-    const fs::path lowered_mlir = temp_dir / "lowered.mlir";
-    const fs::path llvm_ir = temp_dir / "module.ll";
-    const fs::path asm_file = temp_dir / "module.s";
-
-    WriteTextFile(input_mlir.string(), mlir_text);
-
-    std::vector<std::string> mlir_opt_cmd{kMlirOpt, input_mlir.string()};
-    AppendLlvmLoweringPipeline(&mlir_opt_cmd);
-    mlir_opt_cmd.push_back("-o");
-    mlir_opt_cmd.push_back(lowered_mlir.string());
-    RunCommand(mlir_opt_cmd);
-
-    std::vector<std::string> mlir_translate_cmd{kMlirTranslate, lowered_mlir.string(), "--mlir-to-llvmir", "-o", llvm_ir.string()};
-    RunCommand(mlir_translate_cmd);
+    LoweredPaths paths = LowerMlirToLlvm(mlir_text);
 
     if (need_llvm) {
-        CopyFileToTarget(llvm_ir, opt.emit_llvm_path);
+        CopyFileToTarget(paths.llvm_ir, opt.emit_llvm_path);
     }
 
     if (need_asm) {
-        std::vector<std::string> llc_cmd{kLlc, llvm_ir.string(), opt.opt_level};
-        if (!opt.target_triple.empty()) {
-            llc_cmd.push_back("-mtriple=" + opt.target_triple);
-        }
-        if (!opt.mcpu.empty()) {
-            llc_cmd.push_back("-mcpu=" + opt.mcpu);
-        }
-        llc_cmd.push_back("-filetype=asm");
-        llc_cmd.push_back("-o");
-        llc_cmd.push_back(asm_file.string());
-        RunCommand(llc_cmd);
+        const fs::path asm_file = paths.temp_dir / "module.s";
+        RunCommand(BuildLlcCommand(opt, paths.llvm_ir, "asm", asm_file));
         CopyFileToTarget(asm_file, opt.emit_asm_path);
     }
 
-    std::error_code ec;
-    fs::remove(input_mlir, ec);
-    fs::remove(lowered_mlir, ec);
-    fs::remove(llvm_ir, ec);
-    fs::remove(asm_file, ec);
-    fs::remove(temp_dir, ec);
+    RemoveTree(paths.temp_dir);
 }
 
 } // namespace tc::driver

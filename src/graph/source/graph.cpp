@@ -153,40 +153,36 @@ std::string Graph::ToDot(const DotOptions& opt) const {
     dot << "  node  [fontname=\"Helvetica\"];\n";
     dot << "  edge  [fontname=\"Helvetica\"];\n";
 
-    for (const INode* n : *this) {
-        if (const auto* v = dynamic_cast<const Value*>(n)) {
-            if (!opt.show_values) continue;
-            if (v->Name() == "<no name>") continue;
+    const std::vector<const Value*> values = Values();
+    const std::vector<const Operation*> operations = Operations();
 
-            dot << "  " << id_of(v)
-                << " [shape=ellipse, style=filled, fillcolor=\"" << ValueFillColor(v->GetBelongsTo())
-                << "\", label=\"" << EscapeDot(v->Name()) << "\"];\n";
-            continue;
-        }
+    for (const Value* v : values) {
+        if (!opt.show_values) continue;
+        if (v->Name() == "<no name>") continue;
 
-        if (const auto* op = dynamic_cast<const Operation*>(n)) {
-            std::string label = Operation::OpTypeToStr(op->Type());
-            label += "\\n";
-            label += op->Name();
-
-            std::string attrs = AttrsToLabel(op->Attrs(), opt);
-            if (!attrs.empty()) {
-                label += "\\n";
-                label += attrs;
-            }
-
-            dot << "  " << id_of(op)
-                << " [shape=box, style=\"rounded,filled\", fillcolor=\"#B39DDB\""
-                << ", labeljust=\"l\""
-                << ", label=\"" << EscapeDot(label) << "\"];\n";
-            continue;
-        }
+        dot << "  " << id_of(v)
+            << " [shape=ellipse, style=filled, fillcolor=\"" << ValueFillColor(v->GetBelongsTo())
+            << "\", label=\"" << EscapeDot(v->Name()) << "\"];\n";
     }
 
-    for (const INode* n : *this) {
-        const auto* op = dynamic_cast<const Operation*>(n);
-        if (!op) continue;
+    for (const Operation* op : operations) {
+        std::string label = Operation::OpTypeToStr(op->Type());
+        label += "\\n";
+        label += op->Name();
 
+        std::string attrs = AttrsToLabel(op->Attrs(), opt);
+        if (!attrs.empty()) {
+            label += "\\n";
+            label += attrs;
+        }
+
+        dot << "  " << id_of(op)
+            << " [shape=box, style=\"rounded,filled\", fillcolor=\"#B39DDB\""
+            << ", labeljust=\"l\""
+            << ", label=\"" << EscapeDot(label) << "\"];\n";
+    }
+
+    for (const Operation* op : operations) {
         for (size_t i = 0; i < op->Inputs().size(); i++) {
             const Value* v = op->Inputs()[i];
             if (!v) continue;

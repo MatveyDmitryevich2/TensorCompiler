@@ -11,6 +11,7 @@ tensor compiler for sber compiler class
 - mlir-opt
 - mlir-translate
 - llc
+- C++ compiler available as `c++` or `CXX`
 - C++20
 - Python packages from the test scripts: `onnx`, `numpy`
 
@@ -52,6 +53,7 @@ This writes `run_data/models/main_ops.onnx`.
 --mcpu <cpu>
 --O0 | --O1 | --O2 | --O3
 --run
+--run-compiled
 --input <name=path>
 --output-dir <dir>
 ```
@@ -94,11 +96,26 @@ PY
 
 Runtime logs are written to `run_data/logs/tc.log`.
 
+To execute the compiled LLVM/native path instead of the built-in interpreter:
+
+```bash
+./build/tc.x run_data/models/main_ops.onnx \
+  --run-compiled \
+  --input X=run_data/inputs/X.txt \
+  --input A=run_data/inputs/A.txt \
+  --output-dir run_data/compiled_outputs
+```
+
+`--run-compiled` lowers MLIR to LLVM IR, compiles it to a native object with `llc`,
+links a small generated C++ runner, and executes the resulting binary.
+
 ## Compare with ONNX reference
 
 ```bash
 python3 tests/compare_runtime.py
 ```
+
+This checks both `--run` and `--run-compiled` against ONNX ReferenceEvaluator.
 
 ## Generate graph img
 

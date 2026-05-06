@@ -13,15 +13,15 @@ struct GemmAttrs {
 
 GemmAttrs ReadGemmAttrs(const Operation& op) {
     return GemmAttrs{
-        GetAttr<int64_t>(op.Attrs(), "transA", 0) != 0,
-        GetAttr<int64_t>(op.Attrs(), "transB", 0) != 0,
-        GetAttr<float>(op.Attrs(), "alpha", 1.0f),
-        GetAttr<float>(op.Attrs(), "beta", 1.0f)
+        GetAttrOr<int64_t>(op.Attrs(), "transA", 0) != 0,
+        GetAttrOr<int64_t>(op.Attrs(), "transB", 0) != 0,
+        GetAttrOr<float>(op.Attrs(), "alpha", 1.0f),
+        GetAttrOr<float>(op.Attrs(), "beta", 1.0f)
     };
 }
 
 std::vector<int64_t> EffectivePerm(const Operation& op, size_t rank) {
-    std::vector<int64_t> perm = GetAttr<std::vector<int64_t>>(op.Attrs(), "perm", {});
+    std::vector<int64_t> perm = GetAttrOr<std::vector<int64_t>>(op.Attrs(), "perm", {});
     if (perm.empty()) {
         perm.resize(rank);
         for (size_t i = 0; i < rank; ++i) {

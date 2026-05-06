@@ -26,16 +26,16 @@ struct ConvShape {
 };
 
 ConvAttrs ReadConvAttrs(const Operation& op) {
-    std::vector<int64_t> pads = GetAttr<std::vector<int64_t>>(op.Attrs(), "pads", {0, 0, 0, 0});
+    std::vector<int64_t> pads = GetAttrOr<std::vector<int64_t>>(op.Attrs(), "pads", {0, 0, 0, 0});
     if (pads.size() == 2) {
         pads = {pads[0], pads[1], pads[0], pads[1]};
     }
 
     ConvAttrs attrs{
         std::move(pads),
-        GetAttr<std::vector<int64_t>>(op.Attrs(), "strides", {1, 1}),
-        GetAttr<std::vector<int64_t>>(op.Attrs(), "dilations", {1, 1}),
-        GetAttr<int64_t>(op.Attrs(), "group", 1)
+        GetAttrOr<std::vector<int64_t>>(op.Attrs(), "strides", {1, 1}),
+        GetAttrOr<std::vector<int64_t>>(op.Attrs(), "dilations", {1, 1}),
+        GetAttrOr<int64_t>(op.Attrs(), "group", 1)
     };
 
     if (attrs.pads.size() != 4 || attrs.strides.size() != 2 ||

@@ -2,6 +2,7 @@ add_library(driver STATIC)
 
 target_sources(driver
     PRIVATE
+        source/aot_runner.cpp
         source/driver_options.cpp
         source/tool_runner.cpp
 )
@@ -15,4 +16,6 @@ target_link_libraries(driver
     PRIVATE
         tc-flags
         spdlog
+    PUBLIC
+        graph
 )

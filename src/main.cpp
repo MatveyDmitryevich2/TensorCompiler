@@ -3,8 +3,8 @@
 #include <iostream>
 #include <stdexcept>
 #include <string>
-#include <utility>
 
+#include "driver/aot_runner.hpp"
 #include "driver/driver_options.hpp"
 #include "driver/tool_runner.hpp"
 #include "graph/graph.hpp"
@@ -15,8 +15,7 @@
 namespace {
 
 const tc::Value& RequireInputValue(const tc::Graph& graph, const std::string& name) {
-    const tc::INode* node = graph.FindByName(name);
-    const auto* value = dynamic_cast<const tc::Value*>(node);
+    const tc::Value* value = graph.FindValueByName(name);
     if (value == nullptr || !value->HasTensorType()) {
         throw std::runtime_error{"runtime input is not a typed graph value: " + name};
     }
@@ -87,6 +86,9 @@ int main(int argc, const char* argv[]) {
         }
 
         tc::driver::LowerToLlvmAndAsm(opt, mlir_text);
+        if (opt.run_compiled) {
+            tc::driver::CompileAndRunAot(graph, opt, mlir_text);
+        }
     } catch (const std::exception& e) {
         std::cerr << "Exception: " << e.what() << '\n';
         std::cerr << tc::driver::Usage(argv[0]);

@@ -15,7 +15,6 @@
 
 namespace tc {
 
-// class that owns nodes memory managies it
 class NodeContainer {
   private:
     using NodesOwner = std::vector<INode*>;
@@ -35,47 +34,74 @@ class NodeContainer {
         value->MergeInitializerData(std::move(data));
     }
 
+    void Clear() {
+        for (INode* node : nodes_) {
+            delete node;
+        }
+        nodes_.clear();
+        name_table_.clear();
+    }
+
   public:
     using const_iterator = std::vector<INode*>::const_iterator;
 
-    NodeContainer() {}
+    NodeContainer() = default;
     NodeContainer(const NodeContainer& other) = delete;
     NodeContainer& operator=(const NodeContainer& other) = delete;
-    NodeContainer(NodeContainer&& other) = default;
-    NodeContainer& operator=(NodeContainer&& other) = default;
+
+    NodeContainer(NodeContainer&& other)
+        : nodes_{std::move(other.nodes_)}, name_table_{std::move(other.name_table_)} {
+        other.nodes_.clear();
+        other.name_table_.clear();
+    }
+
+    NodeContainer& operator=(NodeContainer&& other) {
+        if (this != &other) {
+            Clear();
+            nodes_ = std::move(other.nodes_);
+            name_table_ = std::move(other.name_table_);
+            other.nodes_.clear();
+            other.name_table_.clear();
+        }
+        return *this;
+    }
 
     ~NodeContainer() {
-        for (size_t i = 0; i < nodes_.size(); i++) {
-            delete nodes_[i];
-        }
+        Clear();
     }
 
     template <typename NodeT, typename... Args>
     NodeT* AddNode(const std::string& name, Args&&... args) {
         static_assert(std::is_base_of_v<INode, NodeT>, "NodeT should be derived from INode");
 
-        if constexpr (std::is_same_v<NodeT, Value>) {
-            auto&& node_it = name_table_.find(name);
-            if (node_it != name_table_.end()) {
+        auto node_it = name_table_.find(name);
+        if (node_it != name_table_.end()) {
+            if constexpr (std::is_same_v<NodeT, Value>) {
+                if (node_it->second->Kind() != NodeKind::kValue) {
+                    throw std::runtime_error{"Node name already belongs to an operation: " + name};
+                }
+
                 Value* value = static_cast<Value*>(node_it->second);
                 MergeExistingValue(value, std::forward<Args>(args)...);
                 return value;
+            } else {
+                throw std::runtime_error{"Duplicate graph node name: " + name};
             }
         }
 
         std::unique_ptr<NodeT> node = std::make_unique<NodeT>(name, std::forward<Args>(args)...);
         NodeT* raw_ptr = node.get();
 
-        NodesOwner tmp_owner{nodes_};
-        NameTable tmp_table{name_table_};
-
-        tmp_owner.push_back(raw_ptr);
-        tmp_table.insert({name, raw_ptr});
-
-        // commit
-        std::swap(nodes_, tmp_owner);
-        std::swap(name_table_, tmp_table);
-
+        nodes_.push_back(raw_ptr);
+        try {
+            const bool inserted = name_table_.emplace(name, raw_ptr).second;
+            if (!inserted) {
+                throw std::runtime_error{"Duplicate graph node name: " + name};
+            }
+        } catch (...) {
+            nodes_.pop_back();
+            throw;
+        }
         node.release();
 
         return raw_ptr;
@@ -103,6 +129,66 @@ class NodeContainer {
         }
 
         return node->second;
+    }
+
+    Value* FindValueByName(const std::string& name) {
+        INode* node = FindByName(name);
+        if (node == nullptr || node->Kind() != NodeKind::kValue) {
+            return nullptr;
+        }
+        return static_cast<Value*>(node);
+    }
+
+    const Value* FindValueByName(const std::string& name) const {
+        const INode* node = FindByName(name);
+        if (node == nullptr || node->Kind() != NodeKind::kValue) {
+            return nullptr;
+        }
+        return static_cast<const Value*>(node);
+    }
+
+    const Operation* FindOperationByName(const std::string& name) const {
+        const INode* node = FindByName(name);
+        if (node == nullptr || node->Kind() != NodeKind::kOperation) {
+            return nullptr;
+        }
+        return static_cast<const Operation*>(node);
+    }
+
+    std::vector<const Value*> Values() const {
+        std::vector<const Value*> values;
+        values.reserve(nodes_.size());
+        for (const INode* node : nodes_) {
+            if (node->Kind() == NodeKind::kValue) {
+                values.push_back(static_cast<const Value*>(node));
+            }
+        }
+        return values;
+    }
+
+    std::vector<const Value*> ValuesByBelong(Value::BelongTo belong) const {
+        std::vector<const Value*> values;
+        values.reserve(nodes_.size());
+        for (const INode* node : nodes_) {
+            if (node->Kind() == NodeKind::kValue) {
+                const Value* value = static_cast<const Value*>(node);
+                if (value->GetBelongsTo() == belong) {
+                    values.push_back(value);
+                }
+            }
+        }
+        return values;
+    }
+
+    std::vector<const Operation*> Operations() const {
+        std::vector<const Operation*> operations;
+        operations.reserve(nodes_.size());
+        for (const INode* node : nodes_) {
+            if (node->Kind() == NodeKind::kOperation) {
+                operations.push_back(static_cast<const Operation*>(node));
+            }
+        }
+        return operations;
     }
 
     INode* operator[](size_t idx) {
@@ -140,6 +226,12 @@ class Graph {
     bool Contains(const std::string& name) const { return nodes_.Contains(name); }
     INode* FindByName(const std::string& name) { return nodes_.FindByName(name); }
     const INode* FindByName(const std::string& name) const { return nodes_.FindByName(name); }
+    Value* FindValueByName(const std::string& name) { return nodes_.FindValueByName(name); }
+    const Value* FindValueByName(const std::string& name) const { return nodes_.FindValueByName(name); }
+    const Operation* FindOperationByName(const std::string& name) const { return nodes_.FindOperationByName(name); }
+    std::vector<const Value*> Values() const { return nodes_.Values(); }
+    std::vector<const Value*> ValuesByBelong(Value::BelongTo belong) const { return nodes_.ValuesByBelong(belong); }
+    std::vector<const Operation*> Operations() const { return nodes_.Operations(); }
     std::string ToDot(const DotOptions& opt = {}) const;
 
     using const_iterator = NodeContainer::const_iterator;

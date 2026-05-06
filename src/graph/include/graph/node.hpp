@@ -15,6 +15,11 @@
 
 namespace tc {
 
+enum class NodeKind {
+    kValue,
+    kOperation,
+};
+
 enum class TensorElemType {
     kUnknown,
     kFloat32,
@@ -85,6 +90,7 @@ class INode {
     virtual ~INode() = default;
 
     virtual std::string ToStr() const = 0;
+    virtual NodeKind Kind() const = 0;
     const std::string& Name() const { return name_; }
 };
 
@@ -107,6 +113,8 @@ class Value : public INode {
       }
 
     ~Value() override = default;
+
+    NodeKind Kind() const override { return NodeKind::kValue; }
 
     BelongTo GetBelongsTo() const { return belongs_; }
 
@@ -217,6 +225,8 @@ class Operation : public IOperation {
     ) : IOperation{name}, op_type_{op_type}, inputs_{inputs}, outputs_{outputs}, attrs_{attrs} {}
 
     ~Operation() override = default;
+
+    NodeKind Kind() const override { return NodeKind::kOperation; }
 
     OpType Type() const { return op_type_; }
     const std::vector<Value*>& Inputs() const { return inputs_; }

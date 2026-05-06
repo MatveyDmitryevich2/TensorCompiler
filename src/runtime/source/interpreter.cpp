@@ -69,15 +69,6 @@ void ForEachIndex(const std::vector<int64_t>& shape, size_t dim, std::vector<int
     }
 }
 
-template <typename T>
-T GetAttr(const AttributeMap& attrs, const std::string& name, T default_value) {
-    auto it = attrs.find(name);
-    if (it == attrs.end()) {
-        return default_value;
-    }
-    return it->second.As<T>();
-}
-
 void RequireArity(const Operation& op, size_t inputs, size_t outputs) {
     if (op.Inputs().size() != inputs || op.Outputs().size() != outputs) {
         Fail(op.Name() + ": expected " + std::to_string(inputs) + " inputs and " +
@@ -230,7 +221,7 @@ void RunMatMul(const Operation& op, TensorMap* values) {
 }
 
 std::vector<int64_t> EffectivePerm(const Operation& op, size_t rank) {
-    std::vector<int64_t> perm = GetAttr<std::vector<int64_t>>(op.Attrs(), "perm", {});
+    std::vector<int64_t> perm = GetAttrOr<std::vector<int64_t>>(op.Attrs(), "perm", {});
     if (perm.empty()) {
         perm.resize(rank);
         for (size_t i = 0; i < rank; ++i) {
@@ -281,10 +272,10 @@ struct GemmAttrs {
 
 GemmAttrs ReadGemmAttrs(const Operation& op) {
     return GemmAttrs{
-        GetAttr<int64_t>(op.Attrs(), "transA", 0) != 0,
-        GetAttr<int64_t>(op.Attrs(), "transB", 0) != 0,
-        GetAttr<float>(op.Attrs(), "alpha", 1.0f),
-        GetAttr<float>(op.Attrs(), "beta", 1.0f)
+        GetAttrOr<int64_t>(op.Attrs(), "transA", 0) != 0,
+        GetAttrOr<int64_t>(op.Attrs(), "transB", 0) != 0,
+        GetAttrOr<float>(op.Attrs(), "alpha", 1.0f),
+        GetAttrOr<float>(op.Attrs(), "beta", 1.0f)
     };
 }
 
@@ -342,16 +333,16 @@ struct ConvAttrs {
 };
 
 ConvAttrs ReadConvAttrs(const Operation& op) {
-    std::vector<int64_t> pads = GetAttr<std::vector<int64_t>>(op.Attrs(), "pads", {0, 0, 0, 0});
+    std::vector<int64_t> pads = GetAttrOr<std::vector<int64_t>>(op.Attrs(), "pads", {0, 0, 0, 0});
     if (pads.size() == 2) {
         pads = {pads[0], pads[1], pads[0], pads[1]};
     }
 
     ConvAttrs attrs{
         std::move(pads),
-        GetAttr<std::vector<int64_t>>(op.Attrs(), "strides", {1, 1}),
-        GetAttr<std::vector<int64_t>>(op.Attrs(), "dilations", {1, 1}),
-        GetAttr<int64_t>(op.Attrs(), "group", 1)
+        GetAttrOr<std::vector<int64_t>>(op.Attrs(), "strides", {1, 1}),
+        GetAttrOr<std::vector<int64_t>>(op.Attrs(), "dilations", {1, 1}),
+        GetAttrOr<int64_t>(op.Attrs(), "group", 1)
     };
 
     if (attrs.pads.size() != 4 || attrs.strides.size() != 2 ||
@@ -538,18 +529,14 @@ TensorMap Interpreter::Run(const Graph& graph, const TensorMap& inputs) const {
     std::vector<const Value*> graph_inputs;
     std::vector<const Value*> graph_outputs;
 
-    for (const INode* node : graph) {
-        if (const auto* value = dynamic_cast<const Value*>(node)) {
-            InitializeValue(*value, &values, &graph_inputs, &graph_outputs);
-        }
+    for (const Value* value : graph.Values()) {
+        InitializeValue(*value, &values, &graph_inputs, &graph_outputs);
     }
 
     ApplyInputs(inputs, graph_inputs, &values);
 
-    for (const INode* node : graph) {
-        if (const auto* op = dynamic_cast<const Operation*>(node)) {
-            RunOperation(*op, &values);
-        }
+    for (const Operation* op : graph.Operations()) {
+        RunOperation(*op, &values);
     }
 
     TensorMap result;

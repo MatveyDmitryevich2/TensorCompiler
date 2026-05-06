@@ -2,6 +2,7 @@
 
 #include <stdexcept>
 #include <string>
+#include <utility>
 #include <vector>
 
 #include "graph/graph.hpp"
@@ -48,4 +49,61 @@ TEST(graph, ReusesValueAndUpgradesBelonging) {
     ASSERT_TRUE(same->HasInitializerData());
     EXPECT_EQ(same->MaybeTensorType()->ElemType(), TensorElemType::kFloat32);
     EXPECT_EQ(same->MaybeTensorType()->Shape(), (std::vector<int64_t>{3, 4}));
+}
+
+TEST(graph, FindsTypedNodes) {
+    Graph graph;
+
+    Value* x = graph.AddNode<Value>("X", Value::BelongTo::kInput);
+    Value* y = graph.AddNode<Value>("Y", Value::BelongTo::kOutput);
+    Operation* op = graph.AddNode<Operation>(
+        "relu0",
+        Operation::OpType::kRelu,
+        std::vector<Value*>{x},
+        std::vector<Value*>{y}
+    );
+
+    EXPECT_EQ(graph.FindValueByName("X"), x);
+    EXPECT_EQ(graph.FindOperationByName("relu0"), op);
+    EXPECT_EQ(graph.FindValueByName("relu0"), nullptr);
+    EXPECT_EQ(graph.FindOperationByName("X"), nullptr);
+
+    EXPECT_EQ(graph.Values().size(), 2);
+    EXPECT_EQ(graph.ValuesByBelong(Value::BelongTo::kInput).size(), 1);
+    EXPECT_EQ(graph.ValuesByBelong(Value::BelongTo::kOutput).size(), 1);
+    EXPECT_EQ(graph.Operations().size(), 1);
+}
+
+TEST(graph, RejectsDuplicateOperationNames) {
+    Graph graph;
+
+    Value* x = graph.AddNode<Value>("X", Value::BelongTo::kInput);
+    Value* y = graph.AddNode<Value>("Y", Value::BelongTo::kOutput);
+    graph.AddNode<Operation>(
+        "relu0",
+        Operation::OpType::kRelu,
+        std::vector<Value*>{x},
+        std::vector<Value*>{y}
+    );
+
+    EXPECT_THROW(
+        graph.AddNode<Operation>(
+            "relu0",
+            Operation::OpType::kRelu,
+            std::vector<Value*>{x},
+            std::vector<Value*>{y}
+        ),
+        std::runtime_error
+    );
+    EXPECT_THROW(graph.AddNode<Value>("relu0", Value::BelongTo::kInternal), std::runtime_error);
+}
+
+TEST(graph, MovesNodeOwnership) {
+    Graph graph;
+    graph.AddNode<Value>("X", Value::BelongTo::kInput);
+
+    Graph moved{std::move(graph)};
+
+    EXPECT_NE(moved.FindValueByName("X"), nullptr);
+    EXPECT_EQ(moved.Values().size(), 1);
 }

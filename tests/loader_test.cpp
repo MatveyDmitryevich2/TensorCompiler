@@ -71,18 +71,14 @@ std::string WriteModelToTempFile(const onnx::ModelProto& model, const std::strin
 
 const tc::Value& AsValue(const tc::Graph& graph, std::string_view name) {
     const std::string name_str{name};
-    const tc::INode* node = graph.FindByName(name_str);
-    EXPECT_NE(node, nullptr);
-    const auto* value = dynamic_cast<const tc::Value*>(node);
+    const tc::Value* value = graph.FindValueByName(name_str);
     EXPECT_NE(value, nullptr);
     return *value;
 }
 
 const tc::Operation& AsOp(const tc::Graph& graph, std::string_view name) {
     const std::string name_str{name};
-    const tc::INode* node = graph.FindByName(name_str);
-    EXPECT_NE(node, nullptr);
-    const auto* op = dynamic_cast<const tc::Operation*>(node);
+    const tc::Operation* op = graph.FindOperationByName(name_str);
     EXPECT_NE(op, nullptr);
     return *op;
 }
@@ -236,6 +232,64 @@ TEST(onnx_loader, ParsesVectorAttributesForConv) {
     EXPECT_EQ(y.GetBelongsTo(), tc::Value::BelongTo::kOutput);
     ASSERT_TRUE(y.HasTensorType());
     EXPECT_EQ(y.MaybeTensorType()->Shape(), (std::vector<int64_t>{1, 4, 8, 8}));
+
+    fs::remove(model_path);
+}
+
+TEST(onnx_loader, GeneratesStableNamesForUnnamedNodes) {
+    onnx::ModelProto model;
+    onnx::GraphProto* graph = model.mutable_graph();
+    graph->set_name("loader_test_unnamed_graph");
+
+    AddTensorValueInfo(graph, "X", onnx::TensorProto_DataType_FLOAT, {2, 2}, true);
+    AddTensorValueInfo(graph, "Y", onnx::TensorProto_DataType_FLOAT, {2, 2}, false);
+
+    onnx::NodeProto* relu = graph->add_node();
+    relu->set_op_type("Relu");
+    relu->add_input("X");
+    relu->add_output("Y");
+
+    const std::string model_path = WriteModelToTempFile(model, "tc_loader_test_unnamed.onnx");
+
+    tc::OnnxLoader loader;
+    tc::Graph loaded = loader.Load(model_path);
+
+    const tc::Operation& op = AsOp(loaded, "Relu_0");
+    EXPECT_EQ(op.Type(), tc::Operation::OpType::kRelu);
+    ASSERT_EQ(op.Inputs().size(), 1U);
+    ASSERT_EQ(op.Outputs().size(), 1U);
+    EXPECT_EQ(op.Inputs()[0]->Name(), "X");
+    EXPECT_EQ(op.Outputs()[0]->Name(), "Y");
+
+    fs::remove(model_path);
+}
+
+TEST(onnx_loader, SkipsEmptyOptionalInputs) {
+    onnx::ModelProto model;
+    onnx::GraphProto* graph = model.mutable_graph();
+    graph->set_name("loader_test_optional_input_graph");
+
+    AddTensorValueInfo(graph, "A", onnx::TensorProto_DataType_FLOAT, {2, 2}, true);
+    AddTensorValueInfo(graph, "B", onnx::TensorProto_DataType_FLOAT, {2, 2}, true);
+    AddTensorValueInfo(graph, "Y", onnx::TensorProto_DataType_FLOAT, {2, 2}, false);
+
+    onnx::NodeProto* gemm = graph->add_node();
+    gemm->set_op_type("Gemm");
+    gemm->add_input("A");
+    gemm->add_input("B");
+    gemm->add_input("");
+    gemm->add_output("Y");
+
+    const std::string model_path = WriteModelToTempFile(model, "tc_loader_test_optional_input.onnx");
+
+    tc::OnnxLoader loader;
+    tc::Graph loaded = loader.Load(model_path);
+
+    const tc::Operation& op = AsOp(loaded, "Gemm_0");
+    EXPECT_EQ(op.Type(), tc::Operation::OpType::kGemm);
+    ASSERT_EQ(op.Inputs().size(), 2U);
+    EXPECT_EQ(op.Inputs()[0]->Name(), "A");
+    EXPECT_EQ(op.Inputs()[1]->Name(), "B");
 
     fs::remove(model_path);
 }
