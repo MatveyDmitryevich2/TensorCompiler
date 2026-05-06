@@ -1,3 +1,5 @@
+from pathlib import Path
+
 import numpy as np
 import onnx
 from onnx import helper, TensorProto, numpy_helper, shape_inference
@@ -8,6 +10,8 @@ def make_tensor(name, arr: np.ndarray) -> onnx.TensorProto:
 
 
 def build_demo_onnx(path: str = "tc_demo.onnx", opset: int = 19) -> onnx.ModelProto:
+    Path(path).parent.mkdir(parents=True, exist_ok=True)
+
     # -------------------------
     # Inputs
     # -------------------------
@@ -144,4 +148,4 @@ def build_demo_onnx(path: str = "tc_demo.onnx", opset: int = 19) -> onnx.ModelPr
 
 
 if __name__ == "__main__":
-    build_demo_onnx("main_ops.onnx", opset=19)
+    build_demo_onnx("run_data/models/main_ops.onnx", opset=19)

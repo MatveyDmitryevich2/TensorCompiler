@@ -3,6 +3,7 @@
 
 #include <functional>
 #include <optional>
+#include <cstddef>
 #include <sstream>
 #include <string>
 #include <string_view>
@@ -30,11 +31,20 @@ std::vector<const Value*> CollectInternalValues(const Graph& graph);
 std::vector<const Operation*> CollectOperations(const Graph& graph);
 
 const TensorType& RequireTensorType(const Value& value);
-float GetFloatAttr(const AttributeMap& attrs, const std::string& name, float default_value);
-int64_t GetIntAttr(const AttributeMap& attrs, const std::string& name, int64_t default_value);
-std::vector<int64_t> GetIntsAttr(const AttributeMap& attrs,
-                                 const std::string& name,
-                                 const std::vector<int64_t>& default_value);
+void RequireArity(const Operation& op, size_t inputs, size_t outputs);
+void RequireInputRange(const Operation& op, size_t min_inputs, size_t max_inputs, size_t outputs);
+void RequireRank(const Operation& op, const TensorType& type, size_t rank, std::string_view role);
+std::string ScalarMemRefType(TensorElemType elem_type);
+std::string JoinStrings(const std::vector<std::string>& values, std::string_view sep);
+
+template <typename T>
+T GetAttr(const AttributeMap& attrs, const std::string& name, T default_value) {
+    auto it = attrs.find(name);
+    if (it == attrs.end()) {
+        return default_value;
+    }
+    return it->second.As<T>();
+}
 
 class ModuleEmitter {
   public:
@@ -72,6 +82,8 @@ class ModuleEmitter {
 
     std::string EmitIndexConst(int64_t value);
     std::string EmitNumericConst(TensorElemType elem_type, double value);
+    std::string EmitScalarAlloca(TensorElemType elem_type, std::string_view hint);
+    void EmitZeroScalar(const std::string& scalar_memref, TensorElemType elem_type);
     std::string EmitLoadRaw(const std::string& memref,
                             const std::string& memref_type,
                             const std::vector<std::string>& indices,
@@ -102,6 +114,9 @@ class ModuleEmitter {
                             const std::string& rhs,
                             TensorElemType elem_type,
                             std::string_view hint);
+    std::string EmitIndexAdd(const std::string& lhs, const std::string& rhs, std::string_view hint);
+    std::string EmitIndexSub(const std::string& lhs, const std::string& rhs, std::string_view hint);
+    std::string EmitIndexMul(const std::string& lhs, const std::string& rhs, std::string_view hint);
 
     void EmitElementwiseBinary(const Operation& op, bool is_add);
     void EmitRelu(const Operation& op);

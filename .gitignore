@@ -1,8 +1,9 @@
-build
+/build/
+/tests/build/
 *.log
 compile_commands.json
-.cache
-__pycache__
+.cache/
+__pycache__/
 
 # models
 *.onnx
@@ -13,3 +14,9 @@ __pycache__
 *.mlir
 *.ll
 *.s
+
+# local runtime data
+/run_data/
+/runtime_out/
+/A.txt
+/X.txt

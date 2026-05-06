@@ -3,9 +3,7 @@
 namespace tc::detail {
 
 void ModuleEmitter::EmitElementwiseBinary(const Operation& op, bool is_add) {
-    if (op.Inputs().size() != 2 || op.Outputs().size() != 1) {
-        Fail(op.Name() + ": expected 2 inputs and 1 output");
-    }
+    RequireArity(op, 2, 1);
 
     const Value& lhs_value = *op.Inputs()[0];
     const Value& rhs_value = *op.Inputs()[1];
@@ -24,9 +22,7 @@ void ModuleEmitter::EmitElementwiseBinary(const Operation& op, bool is_add) {
 }
 
 void ModuleEmitter::EmitRelu(const Operation& op) {
-    if (op.Inputs().size() != 1 || op.Outputs().size() != 1) {
-        Fail(op.Name() + ": expected 1 input and 1 output");
-    }
+    RequireArity(op, 1, 1);
 
     const Value& input = *op.Inputs()[0];
     const Value& output = *op.Outputs()[0];

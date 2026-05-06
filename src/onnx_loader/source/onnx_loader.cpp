@@ -6,6 +6,7 @@
 #include <string_view>
 #include <vector>
 #include <optional>
+#include <cstring>
 
 #include "onnx/onnx-ml.pb.h"
 #include "onnx/onnx_pb.h"
@@ -71,6 +72,15 @@ std::optional<TensorType> ParseValueType(const onnx::ValueInfoProto& value_info)
     return TensorType{elem_type, std::move(shape)};
 }
 
+template <typename T, typename RepeatedField>
+std::string PackRepeatedData(const RepeatedField& values) {
+    std::string raw(static_cast<size_t>(values.size()) * sizeof(T), '\0');
+    if (!raw.empty()) {
+        std::memcpy(raw.data(), values.data(), raw.size());
+    }
+    return raw;
+}
+
 TensorData ParseTensorData(const onnx::TensorProto& tensor) {
     std::vector<int64_t> shape;
     shape.reserve(static_cast<size_t>(tensor.dims_size()));
@@ -81,6 +91,14 @@ TensorData ParseTensorData(const onnx::TensorProto& tensor) {
     std::string raw;
     if (tensor.has_raw_data()) {
         raw = tensor.raw_data();
+    } else if (tensor.data_type() == onnx::TensorProto_DataType_FLOAT && tensor.float_data_size() != 0) {
+        raw = PackRepeatedData<float>(tensor.float_data());
+    } else if (tensor.data_type() == onnx::TensorProto_DataType_DOUBLE && tensor.double_data_size() != 0) {
+        raw = PackRepeatedData<double>(tensor.double_data());
+    } else if (tensor.data_type() == onnx::TensorProto_DataType_INT32 && tensor.int32_data_size() != 0) {
+        raw = PackRepeatedData<int32_t>(tensor.int32_data());
+    } else if (tensor.data_type() == onnx::TensorProto_DataType_INT64 && tensor.int64_data_size() != 0) {
+        raw = PackRepeatedData<int64_t>(tensor.int64_data());
     }
 
     return TensorData{TensorType{ParseElemType(tensor.data_type()), std::move(shape)}, std::move(raw)};

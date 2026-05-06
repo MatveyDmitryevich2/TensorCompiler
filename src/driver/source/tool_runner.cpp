@@ -21,6 +21,7 @@ namespace {
 constexpr const char* kMlirOpt = "mlir-opt";
 constexpr const char* kMlirTranslate = "mlir-translate";
 constexpr const char* kLlc = "llc";
+constexpr const char* kLogPath = "run_data/logs/tc.log";
 
 void AppendLlvmLoweringPipeline(std::vector<std::string>* cmd) {
     cmd->push_back("--canonicalize");
@@ -75,7 +76,8 @@ void RunCommand(const std::vector<std::string>& argv) {
 } // namespace
 
 void SetupLogging(int argc, const char* argv[]) {
-    auto logger = spdlog::basic_logger_mt("tc", "tc.log", true);
+    fs::create_directories(fs::path{kLogPath}.parent_path());
+    auto logger = spdlog::basic_logger_mt("tc", kLogPath, true);
     spdlog::set_default_logger(logger);
     spdlog::set_pattern("[%l] %v");
 

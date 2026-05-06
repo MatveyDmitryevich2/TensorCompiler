@@ -7,6 +7,7 @@ target_sources(tc_tests
         graph_test.cpp
         loader_test.cpp
         mlir_backend_test.cpp
+        runtime_test.cpp
 )
 
 target_link_libraries(tc_tests
@@ -16,10 +17,13 @@ target_link_libraries(tc_tests
         graph
         onnx_loader
         mlir_backend
+        runtime
         onnx_proto
 
         GTest::gtest_main
 )
 
 include(GoogleTest)
-gtest_discover_tests(tc_tests)
+gtest_discover_tests(tc_tests
+    DISCOVERY_MODE PRE_TEST
+)

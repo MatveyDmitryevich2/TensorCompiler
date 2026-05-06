@@ -2,6 +2,8 @@
 #define DRIVER_OPTIONS_HPP_
 
 #include <string>
+#include <utility>
+#include <vector>
 
 namespace tc::driver {
 
@@ -15,6 +17,10 @@ struct DriverOptions {
     std::string target_triple;
     std::string mcpu;
     std::string opt_level = "-O2";
+
+    bool run = false;
+    std::vector<std::pair<std::string, std::string>> input_paths;
+    std::string output_dir;
 
     bool NeedsMlir() const {
         return !emit_mlir_path.empty() || !emit_llvm_path.empty() || !emit_asm_path.empty();

@@ -12,6 +12,7 @@ add_subdirectory(src/graph)
 add_subdirectory(src/onnx_loader)
 add_subdirectory(src/driver)
 add_subdirectory(src/mlir_backend)
+add_subdirectory(src/runtime)
 
 add_executable(tc.x)
 
@@ -33,6 +34,7 @@ target_link_libraries(tc.x
         onnx_loader
         driver
         mlir_backend
+        runtime
 
         spdlog
 )

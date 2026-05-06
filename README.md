@@ -12,6 +12,7 @@ tensor compiler for sber compiler class
 - mlir-translate
 - llc
 - C++20
+- Python packages from the test scripts: `onnx`, `numpy`
 
 ## Build
 
@@ -32,6 +33,8 @@ ctest --test-dir build --output-on-failure
 python3 tests/main_ops.py
 ```
 
+This writes `run_data/models/main_ops.onnx`.
+
 ## Usage
 
 ```bash
@@ -48,20 +51,57 @@ python3 tests/main_ops.py
 --target-triple <triple>
 --mcpu <cpu>
 --O0 | --O1 | --O2 | --O3
+--run
+--input <name=path>
+--output-dir <dir>
 ```
 
 ## Examples
 
 ```bash
-./build/tc.x main_ops.onnx --emit-dot out.dot
-./build/tc.x main_ops.onnx --emit-mlir out.mlir
-./build/tc.x main_ops.onnx --emit-llvm out.ll
-./build/tc.x main_ops.onnx --emit-asm out.s
-./build/tc.x main_ops.onnx --emit-asm out.s --target-triple x86_64-pc-linux-gnu --mcpu native --O3
+mkdir -p run_data/artifacts
+
+./build/tc.x run_data/models/main_ops.onnx --emit-dot run_data/artifacts/main_ops.dot
+./build/tc.x run_data/models/main_ops.onnx --emit-mlir run_data/artifacts/main_ops.mlir
+./build/tc.x run_data/models/main_ops.onnx --emit-llvm run_data/artifacts/main_ops.ll
+./build/tc.x run_data/models/main_ops.onnx --emit-asm run_data/artifacts/main_ops.s
+./build/tc.x run_data/models/main_ops.onnx --emit-asm run_data/artifacts/main_ops.s --target-triple x86_64-pc-linux-gnu --mcpu native --O3
+```
+
+## Execute model
+
+The built-in CPU runtime supports float32 tensors and the project operations:
+`Add`, `Mul`, `Conv`, `Relu`, `MatMul`, `Gemm`, `Transpose`.
+
+Input files are whitespace/comma separated float values in row-major order.
+Keep local inputs and outputs under `run_data/`; this directory is ignored by git.
+
+```bash
+mkdir -p run_data/inputs run_data/outputs
+
+python3 - <<'PY'
+from pathlib import Path
+Path("run_data/inputs/X.txt").write_text(" ".join(["1.0"] * (1 * 3 * 8 * 8)))
+Path("run_data/inputs/A.txt").write_text(" ".join(["1.0"] * (2 * 3)))
+PY
+
+./build/tc.x run_data/models/main_ops.onnx \
+  --run \
+  --input X=run_data/inputs/X.txt \
+  --input A=run_data/inputs/A.txt \
+  --output-dir run_data/outputs
+```
+
+Runtime logs are written to `run_data/logs/tc.log`.
+
+## Compare with ONNX reference
+
+```bash
+python3 tests/compare_runtime.py
 ```
 
 ## Generate graph img
 
 ```bash
-bash dot2svg.sh out.dot
+bash dot2svg.sh run_data/artifacts/main_ops.dot
 ```

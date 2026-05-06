@@ -4,6 +4,7 @@
 #include <stdexcept>
 #include <string>
 #include <string_view>
+#include <utility>
 #include <vector>
 
 namespace tc::driver {
@@ -18,6 +19,14 @@ std::string RequireValue(int argc, const char* argv[], int& i, std::string_view 
     return argv[i];
 }
 
+std::pair<std::string, std::string> ParseInputSpec(const std::string& spec) {
+    const size_t eq = spec.find('=');
+    if (eq == std::string::npos || eq == 0 || eq + 1 >= spec.size()) {
+        throw std::runtime_error{"--input expects name=path"};
+    }
+    return {spec.substr(0, eq), spec.substr(eq + 1)};
+}
+
 } // namespace
 
 std::string Usage(const char* argv0) {
@@ -30,6 +39,9 @@ std::string Usage(const char* argv0) {
         << "  --emit-mlir <path>    write emitted MLIR\n"
         << "  --emit-llvm <path>    lower to LLVM IR\n"
         << "  --emit-asm <path>     lower to assembly\n"
+        << "  --run                 execute graph with the built-in CPU runtime\n"
+        << "  --input <name=path>   load whitespace/comma separated float32 input values\n"
+        << "  --output-dir <dir>    write runtime outputs as text files\n"
         << "\n"
         << "llvm tuning:\n"
         << "  --target-triple <triple>\n"
@@ -58,6 +70,18 @@ DriverOptions ParseArgs(int argc, const char* argv[]) {
         }
         if (arg == "--emit-asm") {
             opt.emit_asm_path = RequireValue(argc, argv, i, arg);
+            continue;
+        }
+        if (arg == "--run") {
+            opt.run = true;
+            continue;
+        }
+        if (arg == "--input") {
+            opt.input_paths.push_back(ParseInputSpec(RequireValue(argc, argv, i, arg)));
+            continue;
+        }
+        if (arg == "--output-dir") {
+            opt.output_dir = RequireValue(argc, argv, i, arg);
             continue;
         }
         if (arg == "--target-triple") {

@@ -82,14 +82,12 @@ std::string ModuleEmitter::RefOf(const Value& value) const {
 }
 
 std::string ModuleEmitter::JoinNames(const std::vector<const Value*>& values) {
-    std::string out;
-    for (size_t i = 0; i < values.size(); ++i) {
-        if (i != 0) {
-            out += ", ";
-        }
-        out += values[i]->Name();
+    std::vector<std::string> names;
+    names.reserve(values.size());
+    for (const Value* value : values) {
+        names.push_back(value->Name());
     }
-    return out;
+    return JoinStrings(names, ", ");
 }
 
 void ModuleEmitter::EmitGlobals() {
@@ -117,13 +115,7 @@ void ModuleEmitter::EmitFunction() {
         args.push_back(arg_name + ": " + MemRefType(*value));
     }
 
-    std::string signature;
-    for (size_t i = 0; i < args.size(); ++i) {
-        if (i != 0) {
-            signature += ", ";
-        }
-        signature += args[i];
-    }
+    const std::string signature = JoinStrings(args, ", ");
 
     EmitLine("func.func @" + SanitizeIdentifier(options_.entry_name, "entry") + "(" + signature + ") {");
     ++indent_;

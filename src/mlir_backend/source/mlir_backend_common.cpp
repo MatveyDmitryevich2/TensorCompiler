@@ -4,6 +4,7 @@
 #include <cstring>
 #include <iomanip>
 #include <limits>
+#include <numeric>
 #include <stdexcept>
 
 namespace tc::detail {
@@ -47,14 +48,12 @@ std::string ShapePrefixToMlir(const std::vector<int64_t>& shape) {
 }
 
 int64_t NumElements(const std::vector<int64_t>& shape) {
-    int64_t total = 1;
-    for (int64_t dim : shape) {
+    return std::accumulate(shape.begin(), shape.end(), int64_t{1}, [](int64_t total, int64_t dim) {
         if (dim < 0) {
             Fail("dynamic shapes are not supported by the MLIR emitter");
         }
-        total *= dim;
-    }
-    return total;
+        return total * dim;
+    });
 }
 
 template <typename T>
@@ -95,11 +94,11 @@ std::string FormatFloat(double value) {
 }
 
 template <typename T, typename Formatter>
-std::string DenseRecursive(const std::vector<T>& values,
-                           const std::vector<int64_t>& shape,
-                           size_t dim,
-                           size_t& pos,
-                           Formatter formatter) {
+std::string FormatDenseElements(const std::vector<T>& values,
+                                const std::vector<int64_t>& shape,
+                                size_t dim,
+                                size_t& pos,
+                                Formatter formatter) {
     if (dim == shape.size()) {
         if (pos >= values.size()) {
             Fail("initializer traversal overflow");
@@ -112,10 +111,43 @@ std::string DenseRecursive(const std::vector<T>& values,
         if (i != 0) {
             out += ", ";
         }
-        out += DenseRecursive(values, shape, dim + 1, pos, formatter);
+        out += FormatDenseElements(values, shape, dim + 1, pos, formatter);
     }
     out += "]";
     return out;
+}
+
+template <typename T, typename Formatter>
+std::string MakeDenseLiteral(const std::string& raw,
+                             const std::vector<int64_t>& shape,
+                             size_t count,
+                             Formatter formatter) {
+    const auto values = ReadPodValues<T>(raw, count);
+    if (shape.empty()) {
+        if (values.empty()) {
+            Fail("scalar initializer has no payload");
+        }
+        return "dense<" + formatter(values[0]) + ">";
+    }
+
+    size_t pos = 0;
+    const std::string body = FormatDenseElements(values, shape, 0, pos, formatter);
+    if (pos != values.size()) {
+        Fail("initializer traversal underflow/overflow");
+    }
+    return "dense<" + body + ">";
+}
+
+template <typename NodeT, typename Predicate>
+std::vector<const NodeT*> CollectNodes(const Graph& graph, Predicate predicate) {
+    std::vector<const NodeT*> nodes;
+    for (const INode* node : graph) {
+        const auto* typed = dynamic_cast<const NodeT*>(node);
+        if (typed != nullptr && predicate(*typed)) {
+            nodes.push_back(typed);
+        }
+    }
+    return nodes;
 }
 
 } // namespace
@@ -131,42 +163,19 @@ std::string DenseLiteral(const TensorData& data) {
     const std::vector<int64_t>& shape = data.type.Shape();
     const size_t count = static_cast<size_t>(NumElements(shape));
 
-    auto make_dense = [&](const auto& values, auto formatter) -> std::string {
-        if (shape.empty()) {
-            if (values.empty()) {
-                Fail("scalar initializer has no payload");
-            }
-            return "dense<" + formatter(values[0]) + ">";
-        }
-        size_t pos = 0;
-        const std::string body = DenseRecursive(values, shape, 0, pos, formatter);
-        if (pos != values.size()) {
-            Fail("initializer traversal underflow/overflow");
-        }
-        return "dense<" + body + ">";
-    };
-
     switch (data.type.ElemType()) {
-        case TensorElemType::kFloat32: {
-            const auto values = ReadPodValues<float>(data.raw, count);
-            return make_dense(values, [](float v) { return FormatFloat(static_cast<double>(v)); });
-        }
-        case TensorElemType::kFloat64: {
-            const auto values = ReadPodValues<double>(data.raw, count);
-            return make_dense(values, [](double v) { return FormatFloat(v); });
-        }
-        case TensorElemType::kInt32: {
-            const auto values = ReadPodValues<int32_t>(data.raw, count);
-            return make_dense(values, [](int32_t v) { return std::to_string(v); });
-        }
-        case TensorElemType::kInt64: {
-            const auto values = ReadPodValues<int64_t>(data.raw, count);
-            return make_dense(values, [](int64_t v) { return std::to_string(v); });
-        }
-        case TensorElemType::kBool: {
-            const auto values = ReadPodValues<uint8_t>(data.raw, count);
-            return make_dense(values, [](uint8_t v) { return v == 0 ? std::string{"false"} : std::string{"true"}; });
-        }
+        case TensorElemType::kFloat32:
+            return MakeDenseLiteral<float>(data.raw, shape, count, [](float v) { return FormatFloat(static_cast<double>(v)); });
+        case TensorElemType::kFloat64:
+            return MakeDenseLiteral<double>(data.raw, shape, count, [](double v) { return FormatFloat(v); });
+        case TensorElemType::kInt32:
+            return MakeDenseLiteral<int32_t>(data.raw, shape, count, [](int32_t v) { return std::to_string(v); });
+        case TensorElemType::kInt64:
+            return MakeDenseLiteral<int64_t>(data.raw, shape, count, [](int64_t v) { return std::to_string(v); });
+        case TensorElemType::kBool:
+            return MakeDenseLiteral<uint8_t>(data.raw, shape, count, [](uint8_t v) {
+                return v == 0 ? std::string{"false"} : std::string{"true"};
+            });
         case TensorElemType::kUnknown:
             break;
     }
@@ -200,36 +209,19 @@ std::string SanitizeIdentifier(std::string_view value, std::string_view prefix) 
 }
 
 std::vector<const Value*> CollectValuesByBelong(const Graph& graph, Value::BelongTo belong) {
-    std::vector<const Value*> values;
-    for (const INode* node : graph) {
-        const auto* value = dynamic_cast<const Value*>(node);
-        if (value != nullptr && value->GetBelongsTo() == belong) {
-            values.push_back(value);
-        }
-    }
-    return values;
+    return CollectNodes<Value>(graph, [belong](const Value& value) {
+        return value.GetBelongsTo() == belong;
+    });
 }
 
 std::vector<const Value*> CollectInternalValues(const Graph& graph) {
-    std::vector<const Value*> values;
-    for (const INode* node : graph) {
-        const auto* value = dynamic_cast<const Value*>(node);
-        if (value != nullptr && value->GetBelongsTo() == Value::BelongTo::kInternal) {
-            values.push_back(value);
-        }
-    }
-    return values;
+    return CollectValuesByBelong(graph, Value::BelongTo::kInternal);
 }
 
 std::vector<const Operation*> CollectOperations(const Graph& graph) {
-    std::vector<const Operation*> ops;
-    for (const INode* node : graph) {
-        const auto* op = dynamic_cast<const Operation*>(node);
-        if (op != nullptr) {
-            ops.push_back(op);
-        }
-    }
-    return ops;
+    return CollectNodes<Operation>(graph, [](const Operation&) {
+        return true;
+    });
 }
 
 const TensorType& RequireTensorType(const Value& value) {
@@ -239,30 +231,38 @@ const TensorType& RequireTensorType(const Value& value) {
     return *value.MaybeTensorType();
 }
 
-float GetFloatAttr(const AttributeMap& attrs, const std::string& name, float default_value) {
-    auto it = attrs.find(name);
-    if (it == attrs.end()) {
-        return default_value;
+void RequireArity(const Operation& op, size_t inputs, size_t outputs) {
+    if (op.Inputs().size() != inputs || op.Outputs().size() != outputs) {
+        Fail(op.Name() + ": expected " + std::to_string(inputs) + " inputs and " +
+             std::to_string(outputs) + " outputs");
     }
-    return it->second.As<float>();
 }
 
-int64_t GetIntAttr(const AttributeMap& attrs, const std::string& name, int64_t default_value) {
-    auto it = attrs.find(name);
-    if (it == attrs.end()) {
-        return default_value;
+void RequireInputRange(const Operation& op, size_t min_inputs, size_t max_inputs, size_t outputs) {
+    if (op.Inputs().size() < min_inputs || op.Inputs().size() > max_inputs || op.Outputs().size() != outputs) {
+        Fail(op.Name() + ": invalid input/output count");
     }
-    return it->second.As<int64_t>();
 }
 
-std::vector<int64_t> GetIntsAttr(const AttributeMap& attrs,
-                                 const std::string& name,
-                                 const std::vector<int64_t>& default_value) {
-    auto it = attrs.find(name);
-    if (it == attrs.end()) {
-        return default_value;
+void RequireRank(const Operation& op, const TensorType& type, size_t rank, std::string_view role) {
+    if (type.Shape().size() != rank) {
+        Fail(op.Name() + ": " + std::string(role) + " must have rank " + std::to_string(rank));
     }
-    return it->second.As<std::vector<int64_t>>();
+}
+
+std::string ScalarMemRefType(TensorElemType elem_type) {
+    return "memref<" + ElemTypeToMlir(elem_type) + ">";
+}
+
+std::string JoinStrings(const std::vector<std::string>& values, std::string_view sep) {
+    std::string out;
+    for (size_t i = 0; i < values.size(); ++i) {
+        if (i != 0) {
+            out += sep;
+        }
+        out += values[i];
+    }
+    return out;
 }
 
 std::string ModuleEmitter::EmitIndexConst(int64_t value) {
@@ -285,18 +285,23 @@ std::string ModuleEmitter::EmitNumericConst(TensorElemType elem_type, double val
     return name;
 }
 
+std::string ModuleEmitter::EmitScalarAlloca(TensorElemType elem_type, std::string_view hint) {
+    const std::string scalar_memref = NewSsa(hint);
+    EmitLine(scalar_memref + " = memref.alloca() : " + ScalarMemRefType(elem_type));
+    return scalar_memref;
+}
+
+void ModuleEmitter::EmitZeroScalar(const std::string& scalar_memref, TensorElemType elem_type) {
+    const std::string zero = EmitNumericConst(elem_type, 0.0);
+    EmitStoreRaw(zero, scalar_memref, ScalarMemRefType(elem_type), {});
+}
+
 std::string ModuleEmitter::EmitLoadRaw(const std::string& memref,
                                        const std::string& memref_type,
                                        const std::vector<std::string>& indices,
                                        std::string_view hint) {
     const std::string name = NewSsa(hint);
-    std::string index_list;
-    for (size_t i = 0; i < indices.size(); ++i) {
-        if (i != 0) {
-            index_list += ", ";
-        }
-        index_list += indices[i];
-    }
+    const std::string index_list = JoinStrings(indices, ", ");
     EmitLine(name + " = memref.load " + memref + "[" + index_list + "] : " + memref_type);
     return name;
 }
@@ -305,13 +310,7 @@ void ModuleEmitter::EmitStoreRaw(const std::string& scalar,
                                  const std::string& memref,
                                  const std::string& memref_type,
                                  const std::vector<std::string>& indices) {
-    std::string index_list;
-    for (size_t i = 0; i < indices.size(); ++i) {
-        if (i != 0) {
-            index_list += ", ";
-        }
-        index_list += indices[i];
-    }
+    const std::string index_list = JoinStrings(indices, ", ");
     EmitLine("memref.store " + scalar + ", " + memref + "[" + index_list + "] : " + memref_type);
 }
 
@@ -409,6 +408,24 @@ std::string ModuleEmitter::EmitMulLike(const std::string& lhs,
         return out;
     }
     Fail("unsupported mul type");
+}
+
+std::string ModuleEmitter::EmitIndexAdd(const std::string& lhs, const std::string& rhs, std::string_view hint) {
+    const std::string out = NewSsa(hint);
+    EmitLine(out + " = arith.addi " + lhs + ", " + rhs + " : index");
+    return out;
+}
+
+std::string ModuleEmitter::EmitIndexSub(const std::string& lhs, const std::string& rhs, std::string_view hint) {
+    const std::string out = NewSsa(hint);
+    EmitLine(out + " = arith.subi " + lhs + ", " + rhs + " : index");
+    return out;
+}
+
+std::string ModuleEmitter::EmitIndexMul(const std::string& lhs, const std::string& rhs, std::string_view hint) {
+    const std::string out = NewSsa(hint);
+    EmitLine(out + " = arith.muli " + lhs + ", " + rhs + " : index");
+    return out;
 }
 
 } // namespace tc::detail
