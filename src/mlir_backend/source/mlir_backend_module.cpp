@@ -75,7 +75,7 @@ const std::vector<int64_t>& ModuleEmitter::ShapeOf(const Value& value) const {
     return RequireTensorType(value).Shape();
 }
 
-std::string ModuleEmitter::RefOf(const Value& value) const {
+const std::string& ModuleEmitter::RefOf(const Value& value) const {
     auto it = value_refs_.find(value.Name());
     if (it == value_refs_.end()) {
         Fail("missing storage binding for value '" + value.Name() + "'");
@@ -84,12 +84,14 @@ std::string ModuleEmitter::RefOf(const Value& value) const {
 }
 
 std::string ModuleEmitter::JoinNames(const std::vector<const Value*>& values) {
-    std::vector<std::string> names;
-    names.reserve(values.size());
-    for (const Value* value : values) {
-        names.push_back(value->Name());
+    std::string out;
+    for (size_t i = 0; i < values.size(); ++i) {
+        if (i != 0) {
+            out += ", ";
+        }
+        out += values[i]->Name();
     }
-    return JoinStrings(names, ", ");
+    return out;
 }
 
 void ModuleEmitter::EmitGlobals() {

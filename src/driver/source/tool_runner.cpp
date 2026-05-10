@@ -40,7 +40,7 @@ void AppendLlvmLoweringPipeline(std::vector<std::string>* cmd) {
     cmd->push_back("--reconcile-unrealized-casts");
 }
 
-std::string ShellQuote(const std::string& value) {
+std::string ShellQuote(std::string_view value) {
     std::string out = "'";
     for (char c : value) {
         if (c == '\'') {

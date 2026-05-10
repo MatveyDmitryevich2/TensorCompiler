@@ -113,6 +113,7 @@ void ModuleEmitter::EmitConv(const Operation& op) {
     const std::string scalar_memref_type = ScalarMemRefType(elem_type);
 
     std::vector<std::string> outer_indices;
+    outer_indices.reserve(5);
     EmitLoopNest({shape.n, attrs.group, shape.out_channels_per_group, shape.out_h, shape.out_w}, 0, outer_indices, [&](const std::vector<std::string>& ivs) {
         const std::string oc_base = EmitIndexMul(ivs[1], EmitIndexConst(shape.out_channels_per_group), "oc_base");
         const std::string oc = EmitIndexAdd(oc_base, ivs[2], "oc");
@@ -122,6 +123,7 @@ void ModuleEmitter::EmitConv(const Operation& op) {
         EmitZeroScalar(acc_buf, elem_type);
 
         std::vector<std::string> reduce_indices;
+        reduce_indices.reserve(3);
         EmitLoopNest({shape.channels_per_group, shape.kernel_h, shape.kernel_w}, 0, reduce_indices, [&](const std::vector<std::string>& r) {
             const std::string in_c = EmitIndexAdd(c_base, r[0], "in_c");
 

@@ -11,6 +11,7 @@ void ModuleEmitter::EmitElementwiseBinary(const Operation& op, bool is_add) {
     const TensorElemType elem_type = RequireTensorType(out_value).ElemType();
 
     std::vector<std::string> indices;
+    indices.reserve(ShapeOf(out_value).size());
     EmitLoopNest(ShapeOf(out_value), 0, indices, [&](const std::vector<std::string>& ivs) {
         const std::string lhs = EmitLoadValue(lhs_value, BroadcastIndices(lhs_value, out_value, ivs), "lhs");
         const std::string rhs = EmitLoadValue(rhs_value, BroadcastIndices(rhs_value, out_value, ivs), "rhs");
@@ -35,6 +36,7 @@ void ModuleEmitter::EmitRelu(const Operation& op) {
     }
 
     std::vector<std::string> indices;
+    indices.reserve(ShapeOf(output).size());
     EmitLoopNest(ShapeOf(output), 0, indices, [&](const std::vector<std::string>& ivs) {
         const std::string arg = EmitLoadValue(input, BroadcastIndices(input, output, ivs), "relu_in");
         const std::string zero = EmitNumericConst(elem_type, 0.0);

@@ -51,6 +51,28 @@ TEST(graph, ReusesValueAndUpgradesBelonging) {
     EXPECT_EQ(same->MaybeTensorType()->Shape(), (std::vector<int64_t>{3, 4}));
 }
 
+TEST(graph, MergeTensorTypeOnlyImprovesKnownInformation) {
+    Graph graph;
+    Value* value = graph.AddNode<Value>("X", Value::BelongTo::kInternal);
+
+    value->MergeTensorType(TensorType{TensorElemType::kUnknown, {}});
+    ASSERT_TRUE(value->HasTensorType());
+    EXPECT_EQ(value->MaybeTensorType()->ElemType(), TensorElemType::kUnknown);
+    EXPECT_TRUE(value->MaybeTensorType()->Shape().empty());
+
+    value->MergeTensorType(TensorType{TensorElemType::kFloat32, {-1, 4}});
+    EXPECT_EQ(value->MaybeTensorType()->ElemType(), TensorElemType::kFloat32);
+    EXPECT_EQ(value->MaybeTensorType()->Shape(), (std::vector<int64_t>{-1, 4}));
+
+    value->MergeTensorType(TensorType{TensorElemType::kFloat32, {2, 4}});
+    EXPECT_EQ(value->MaybeTensorType()->ElemType(), TensorElemType::kFloat32);
+    EXPECT_EQ(value->MaybeTensorType()->Shape(), (std::vector<int64_t>{2, 4}));
+
+    value->MergeTensorType(TensorType{TensorElemType::kUnknown, {8, 8}});
+    EXPECT_EQ(value->MaybeTensorType()->ElemType(), TensorElemType::kFloat32);
+    EXPECT_EQ(value->MaybeTensorType()->Shape(), (std::vector<int64_t>{2, 4}));
+}
+
 TEST(graph, FindsTypedNodes) {
     Graph graph;
 
@@ -72,6 +94,42 @@ TEST(graph, FindsTypedNodes) {
     EXPECT_EQ(graph.ValuesByBelong(Value::BelongTo::kInput).size(), 1);
     EXPECT_EQ(graph.ValuesByBelong(Value::BelongTo::kOutput).size(), 1);
     EXPECT_EQ(graph.Operations().size(), 1);
+}
+
+TEST(graph, ToDotHonorsOptionsAndEscapesLabels) {
+    Graph graph;
+
+    Value* x = graph.AddNode<Value>("X\"quoted", Value::BelongTo::kInput);
+    Value* y = graph.AddNode<Value>("Y", Value::BelongTo::kOutput);
+    AttributeMap attrs{
+        {"message", Attribute{"message", std::string{"line1\nline2\""}}},
+        {"perm", Attribute{"perm", std::vector<int64_t>{1, 0}}}
+    };
+    graph.AddNode<Operation>(
+        "transpose0",
+        Operation::OpType::kTranspose,
+        std::vector<Value*>{x},
+        std::vector<Value*>{y},
+        attrs
+    );
+
+    DotOptions opt;
+    opt.rank_left_to_right = true;
+    const std::string dot = graph.ToDot(opt);
+
+    EXPECT_NE(dot.find("rankdir=LR"), std::string::npos);
+    EXPECT_NE(dot.find("X\\\"quoted"), std::string::npos);
+    EXPECT_NE(dot.find("message="), std::string::npos);
+    EXPECT_NE(dot.find("line1\\nline2"), std::string::npos);
+    EXPECT_NE(dot.find("\\\""), std::string::npos);
+    EXPECT_NE(dot.find("label=\"in0\""), std::string::npos);
+    EXPECT_NE(dot.find("label=\"out0\""), std::string::npos);
+
+    opt.show_attrs = false;
+    opt.show_edge_indices = false;
+    const std::string compact_dot = graph.ToDot(opt);
+    EXPECT_EQ(compact_dot.find("message="), std::string::npos);
+    EXPECT_EQ(compact_dot.find("label=\"in0\""), std::string::npos);
 }
 
 TEST(graph, RejectsDuplicateOperationNames) {

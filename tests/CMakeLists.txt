@@ -5,6 +5,7 @@ add_executable(tc_tests)
 target_sources(tc_tests
     PRIVATE
         graph_test.cpp
+        driver_options_test.cpp
         loader_test.cpp
         mlir_backend_test.cpp
         runtime_test.cpp
@@ -15,6 +16,7 @@ target_link_libraries(tc_tests
         tc-flags
         helpers
         graph
+        driver
         onnx_loader
         mlir_backend
         runtime

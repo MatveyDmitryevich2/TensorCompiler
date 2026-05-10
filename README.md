@@ -1,82 +1,69 @@
 # TensorCompiler
 
-tensor compiler for sber compiler class
+TensorCompiler - учебный компилятор нейросетевых графов. Проект загружает ONNX-модель, строит внутреннее представление графа, умеет выполнять его через встроенный CPU runtime, а также генерировать MLIR, LLVM IR и assembly для AOT-запуска.
 
-## Prerequisites
+Поддерживаемые операции в текущей версии: `Add`, `Mul`, `Conv`, `Relu`, `MatMul`, `Gemm`, `Transpose`.
 
-- CMake ≥ 3.21
-- protoc
-- Graphviz (optional)
-- Python 3
-- mlir-opt
-- mlir-translate
-- llc
-- C++ compiler available as `c++` or `CXX`
+## Что используется
+
 - C++20
-- Python packages from the test scripts: `onnx`, `numpy`
+- CMake
+- GoogleTest
+- ONNX / protobuf
+- MLIR tooling: `mlir-opt`, `mlir-translate`
+- LLVM `llc`
+- Graphviz
+- Python 3
+- Python: `onnx`, `numpy`
 
-## Build
+## Требования
+
+```bash
+cmake
+protoc
+c++
+python3
+mlir-opt
+mlir-translate
+llc
+dot
+```
+
+## Сборка
 
 ```bash
 cmake -S . -B build -DCMAKE_BUILD_TYPE=Debug
-cmake --build build -j$(nproc)
+cmake --build build -j16
 ```
 
-## Run tests
+## Тесты
 
 ```bash
 ctest --test-dir build --output-on-failure
 ```
 
-## Generate model
+## Генерация demo ONNX-модели
 
 ```bash
 python3 tests/main_ops.py
 ```
 
-This writes `run_data/models/main_ops.onnx`.
-
-## Usage
+Создасться модель:
 
 ```bash
-./build/tc.x <model_path> [options]
+run_data/models/main_ops.onnx
 ```
 
-### Options
+Модель покрывает основные возможности проекта: `Conv`, `Relu`, `Transpose`, `MatMul`, `Add`, `Mul`, `Gemm`, broadcasting, grouped convolution, `transA`/`transB` у `Gemm`.
 
-```text
---emit-dot <path>
---emit-mlir <path>
---emit-llvm <path>
---emit-asm <path>
---target-triple <triple>
---mcpu <cpu>
---O0 | --O1 | --O2 | --O3
---run
---run-compiled
---input <name=path>
---output-dir <dir>
-```
+## Подготовка входных данных
 
-## Examples
+Для `run_data/models/main_ops.onnx` нужны два входа:
 
-```bash
-mkdir -p run_data/artifacts
+- `X` с shape `[1,3,8,8]`, всего 192 числа `float32`
+- `A` с shape `[2,3]`, всего 6 чисел `float32`
 
-./build/tc.x run_data/models/main_ops.onnx --emit-dot run_data/artifacts/main_ops.dot
-./build/tc.x run_data/models/main_ops.onnx --emit-mlir run_data/artifacts/main_ops.mlir
-./build/tc.x run_data/models/main_ops.onnx --emit-llvm run_data/artifacts/main_ops.ll
-./build/tc.x run_data/models/main_ops.onnx --emit-asm run_data/artifacts/main_ops.s
-./build/tc.x run_data/models/main_ops.onnx --emit-asm run_data/artifacts/main_ops.s --target-triple x86_64-pc-linux-gnu --mcpu native --O3
-```
-
-## Execute model
-
-The built-in CPU runtime supports float32 tensors and the project operations:
-`Add`, `Mul`, `Conv`, `Relu`, `MatMul`, `Gemm`, `Transpose`.
-
-Input files are whitespace/comma separated float values in row-major order.
-Keep local inputs and outputs under `run_data/`; this directory is ignored by git.
+Файлы входов - обычный текст: числа через пробелы или запятые, в row-major порядке.
 
 ```bash
 mkdir -p run_data/inputs run_data/outputs
@@ -86,7 +73,11 @@ from pathlib import Path
 Path("run_data/inputs/X.txt").write_text(" ".join(["1.0"] * (1 * 3 * 8 * 8)))
 Path("run_data/inputs/A.txt").write_text(" ".join(["1.0"] * (2 * 3)))
 PY
+```
 
+## Обычный запуск через встроенный runtime
+
+```bash
 ./build/tc.x run_data/models/main_ops.onnx \
   --run \
   --input X=run_data/inputs/X.txt \
@@ -94,9 +85,20 @@ PY
   --output-dir run_data/outputs
 ```
 
-Runtime logs are written to `run_data/logs/tc.log`.
+- загружает `run_data/models/main_ops.onnx`
+- выполняет граф встроенным C++ CPU runtime
+- читает вход `X` из `run_data/inputs/X.txt`
+- читает вход `A` из `run_data/inputs/A.txt`
+- сохраняет выходы в `run_data/outputs`
 
-To execute the compiled LLVM/native path instead of the built-in interpreter:
+После запуска появятся файлы:
+
+```bash
+run_data/outputs/X_t.txt
+run_data/outputs/Y_gemm.txt
+```
+
+## AOT/compiled запуск
 
 ```bash
 ./build/tc.x run_data/models/main_ops.onnx \
@@ -106,19 +108,140 @@ To execute the compiled LLVM/native path instead of the built-in interpreter:
   --output-dir run_data/compiled_outputs
 ```
 
-`--run-compiled` lowers MLIR to LLVM IR, compiles it to a native object with `llc`,
-links a small generated C++ runner, and executes the resulting binary.
+`--run-compiled` строит MLIR, опускает его до LLVM IR, компилирует object через `llc`, собирает временный C++ runner и запускает получившийся бинарник.
 
-## Compare with ONNX reference
+## Генерация артефактов
+
+Создать директорию под результаты:
+
+```bash
+mkdir -p run_data/artifacts
+```
+
+Сгенерировать DOT-граф:
+
+```bash
+./build/tc.x run_data/models/main_ops.onnx \
+  --emit-dot run_data/artifacts/main_ops.dot
+```
+
+Сгенерировать SVG из DOT:
+
+```bash
+bash dot2svg.sh run_data/artifacts/main_ops.dot
+```
+
+Результат:
+
+```bash
+run_data/artifacts/main_ops.dot.svg
+```
+
+Сгенерировать MLIR:
+
+```bash
+./build/tc.x run_data/models/main_ops.onnx \
+  --emit-mlir run_data/artifacts/main_ops.mlir
+```
+
+Сгенерировать LLVM IR:
+
+```bash
+./build/tc.x run_data/models/main_ops.onnx \
+  --emit-llvm run_data/artifacts/main_ops.ll
+```
+
+Сгенерировать assembly:
+
+```bash
+./build/tc.x run_data/models/main_ops.onnx \
+  --emit-asm run_data/artifacts/main_ops.s
+```
+
+Сгенерировать assembly с настройками LLVM:
+
+```bash
+./build/tc.x run_data/models/main_ops.onnx \
+  --emit-asm run_data/artifacts/main_ops_O3.s \
+  --target-triple x86_64-pc-linux-gnu \
+  --mcpu native \
+  --O3
+```
+
+## Все опции `tc.x`
+
+Общий формат:
+
+```bash
+./build/tc.x <model_path> [options]
+```
+
+Опции:
+
+```text
+--run
+```
+
+Запустить модель через встроенный CPU runtime.
+
+```text
+--run-compiled
+```
+
+Скомпилировать модель через MLIR/LLVM и запустить native-код.
+
+```text
+--input <name=path>
+```
+
+```text
+--output-dir <dir>
+```
+
+Директория, куда runtime или compiled runner сохраняет выходы модели в `.txt`.
+
+```text
+--emit-dot <path>
+```
+
+Сохранить внутренний граф в DOT-формате для Graphviz.
+
+```text
+--emit-mlir <path>
+```
+
+Сохранить сгенерированный MLIR.
+
+```text
+--emit-llvm <path>
+```
+
+Опустить MLIR до LLVM IR и сохранить `.ll`.
+
+```text
+--emit-asm <path>
+```
+
+Опустить MLIR до LLVM IR, затем через `llc` сгенерировать assembly.
+
+```text
+--target-triple <triple>
+```
+
+Передать LLVM target triple для `llc`.
+
+## Сравнение с ONNX reference
 
 ```bash
 python3 tests/compare_runtime.py
 ```
 
-This checks both `--run` and `--run-compiled` against ONNX ReferenceEvaluator.
+Скрипт генерирует demo-модель, создает входы, запускает оба режима (`--run` и `--run-compiled`) и сравнивает результаты с ONNX `ReferenceEvaluator`.
 
-## Generate graph img
+## Логи
+
+Логи запуска пишутся сюда:
 
 ```bash
-bash dot2svg.sh run_data/artifacts/main_ops.dot
+run_data/logs/tc.log
 ```

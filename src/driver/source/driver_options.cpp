@@ -19,12 +19,12 @@ std::string RequireValue(int argc, const char* argv[], int& i, std::string_view 
     return argv[i];
 }
 
-std::pair<std::string, std::string> ParseInputSpec(const std::string& spec) {
+std::pair<std::string, std::string> ParseInputSpec(std::string_view spec) {
     const size_t eq = spec.find('=');
     if (eq == std::string::npos || eq == 0 || eq + 1 >= spec.size()) {
         throw std::runtime_error{"--input expects name=path"};
     }
-    return {spec.substr(0, eq), spec.substr(eq + 1)};
+    return {std::string{spec.substr(0, eq)}, std::string{spec.substr(eq + 1)}};
 }
 
 } // namespace
@@ -56,7 +56,7 @@ DriverOptions ParseArgs(int argc, const char* argv[]) {
     std::vector<std::string> positional;
 
     for (int i = 1; i < argc; ++i) {
-        const std::string arg = argv[i];
+        const std::string_view arg = argv[i];
         if (arg == "--emit-dot") {
             opt.emit_dot_path = RequireValue(argc, argv, i, arg);
             continue;
@@ -98,13 +98,13 @@ DriverOptions ParseArgs(int argc, const char* argv[]) {
             continue;
         }
         if (arg == "--O0" || arg == "--O1" || arg == "--O2" || arg == "--O3") {
-            opt.opt_level = std::string{"-O"} + arg.substr(3);
+            opt.opt_level = std::string{"-O"} + std::string{arg.substr(3)};
             continue;
         }
         if (!arg.empty() && arg[0] == '-') {
-            throw std::runtime_error{"unknown flag: " + arg};
+            throw std::runtime_error{"unknown flag: " + std::string{arg}};
         }
-        positional.push_back(arg);
+        positional.emplace_back(arg);
     }
 
     if (positional.empty()) {

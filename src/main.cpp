@@ -3,6 +3,7 @@
 #include <iostream>
 #include <stdexcept>
 #include <string>
+#include <string_view>
 
 #include "driver/aot_runner.hpp"
 #include "driver/driver_options.hpp"
@@ -14,10 +15,11 @@
 
 namespace {
 
-const tc::Value& RequireInputValue(const tc::Graph& graph, const std::string& name) {
-    const tc::Value* value = graph.FindValueByName(name);
+const tc::Value& RequireInputValue(const tc::Graph& graph, std::string_view name) {
+    const std::string name_str{name};
+    const tc::Value* value = graph.FindValueByName(name_str);
     if (value == nullptr || !value->HasTensorType()) {
-        throw std::runtime_error{"runtime input is not a typed graph value: " + name};
+        throw std::runtime_error{"runtime input is not a typed graph value: " + name_str};
     }
     return *value;
 }

@@ -29,8 +29,8 @@ class Attribute {
     AttrValue value_;
 
   public:
-    Attribute(const std::string& name, AttrValue value)
-        : name_{name}, value_{std::move(value)} {
+    Attribute(std::string name, AttrValue value)
+        : name_{std::move(name)}, value_{std::move(value)} {
         if (name_.empty()) {
             throw std::runtime_error{"Attribute: empty name"};
         }

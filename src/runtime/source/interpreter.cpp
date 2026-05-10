@@ -4,6 +4,7 @@
 #include <cstring>
 #include <numeric>
 #include <stdexcept>
+#include <string_view>
 #include <utility>
 #include <vector>
 
@@ -82,9 +83,9 @@ void RequireInputRange(const Operation& op, size_t min_inputs, size_t max_inputs
     }
 }
 
-void RequireRank(const Operation& op, const Tensor& tensor, size_t rank, const std::string& role) {
+void RequireRank(const Operation& op, const Tensor& tensor, size_t rank, std::string_view role) {
     if (tensor.shape.size() != rank) {
-        Fail(op.Name() + ": " + role + " must have rank " + std::to_string(rank));
+        Fail(op.Name() + ": " + std::string(role) + " must have rank " + std::to_string(rank));
     }
 }
 
@@ -169,6 +170,7 @@ void RunElementwise(const Operation& op, TensorMap* values, Fn apply) {
     const auto out_strides = Strides(out.shape);
 
     std::vector<int64_t> indices;
+    indices.reserve(out.shape.size());
     ForEachIndex(out.shape, 0, &indices, [&](const std::vector<int64_t>& out_idx) {
         const auto lhs_idx = BroadcastIndex(lhs, out, out_idx);
         const auto rhs_idx = BroadcastIndex(rhs, out, out_idx);
@@ -254,6 +256,7 @@ void RunTranspose(const Operation& op, TensorMap* values) {
     const auto output_strides = Strides(output.shape);
 
     std::vector<int64_t> output_idx;
+    output_idx.reserve(output.shape.size());
     ForEachIndex(output.shape, 0, &output_idx, [&](const std::vector<int64_t>& out_idx) {
         std::vector<int64_t> in_idx(rank);
         for (size_t out_axis = 0; out_axis < rank; ++out_axis) {
@@ -541,7 +544,7 @@ TensorMap Interpreter::Run(const Graph& graph, const TensorMap& inputs) const {
 
     TensorMap result;
     for (const Value* output : graph_outputs) {
-        result.emplace(output->Name(), RequireTensor(values, *output));
+        result.emplace(output->Name(), std::move(RequireTensor(&values, *output)));
     }
     return result;
 }

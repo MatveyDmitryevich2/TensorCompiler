@@ -1,5 +1,6 @@
 #include "gtest/gtest.h"
 
+#include <cstring>
 #include <filesystem>
 #include <fstream>
 #include <string>
@@ -81,6 +82,14 @@ const tc::Operation& AsOp(const tc::Graph& graph, std::string_view name) {
     const tc::Operation* op = graph.FindOperationByName(name_str);
     EXPECT_NE(op, nullptr);
     return *op;
+}
+
+std::vector<float> RawToFloats(const std::string& raw) {
+    std::vector<float> values(raw.size() / sizeof(float));
+    if (!values.empty()) {
+        std::memcpy(values.data(), raw.data(), raw.size());
+    }
+    return values;
 }
 
 } // namespace
@@ -232,6 +241,59 @@ TEST(onnx_loader, ParsesVectorAttributesForConv) {
     EXPECT_EQ(y.GetBelongsTo(), tc::Value::BelongTo::kOutput);
     ASSERT_TRUE(y.HasTensorType());
     EXPECT_EQ(y.MaybeTensorType()->Shape(), (std::vector<int64_t>{1, 4, 8, 8}));
+
+    fs::remove(model_path);
+}
+
+TEST(onnx_loader, ParsesSymbolicDimsAndFloatDataInitializers) {
+    onnx::ModelProto model;
+    onnx::GraphProto* graph = model.mutable_graph();
+    graph->set_name("loader_test_symbolic_graph");
+
+    onnx::ValueInfoProto* x = graph->add_input();
+    x->set_name("X");
+    auto* x_tensor = x->mutable_type()->mutable_tensor_type();
+    x_tensor->set_elem_type(onnx::TensorProto_DataType_FLOAT);
+    auto* x_shape = x_tensor->mutable_shape();
+    x_shape->add_dim()->set_dim_param("batch");
+    x_shape->add_dim()->set_dim_value(3);
+
+    AddTensorValueInfo(graph, "Y", onnx::TensorProto_DataType_FLOAT, {-1, 3}, false);
+
+    onnx::TensorProto* bias = graph->add_initializer();
+    bias->set_name("B");
+    bias->set_data_type(onnx::TensorProto_DataType_FLOAT);
+    bias->add_dims(3);
+    bias->add_float_data(1.25f);
+    bias->add_float_data(-2.0f);
+    bias->add_float_data(3.5f);
+
+    onnx::NodeProto* add = graph->add_node();
+    add->set_name("add0");
+    add->set_op_type("Add");
+    add->add_input("X");
+    add->add_input("B");
+    add->add_output("Y");
+
+    const std::string model_path = WriteModelToTempFile(model, "tc_loader_test_symbolic.onnx");
+
+    tc::OnnxLoader loader;
+    tc::Graph loaded = loader.Load(model_path);
+
+    const tc::Value& loaded_x = AsValue(loaded, "X");
+    ASSERT_TRUE(loaded_x.HasTensorType());
+    EXPECT_EQ(loaded_x.MaybeTensorType()->Shape(), (std::vector<int64_t>{-1, 3}));
+
+    const tc::Value& loaded_bias = AsValue(loaded, "B");
+    EXPECT_EQ(loaded_bias.GetBelongsTo(), tc::Value::BelongTo::kInitializer);
+    ASSERT_TRUE(loaded_bias.HasInitializerData());
+    EXPECT_EQ(loaded_bias.InitializerData()->raw.size(), 3U * sizeof(float));
+    EXPECT_EQ(RawToFloats(loaded_bias.InitializerData()->raw), (std::vector<float>{1.25f, -2.0f, 3.5f}));
+
+    const tc::Operation& loaded_add = AsOp(loaded, "add0");
+    EXPECT_EQ(loaded_add.Type(), tc::Operation::OpType::kAdd);
+    ASSERT_EQ(loaded_add.Inputs().size(), 2U);
+    EXPECT_EQ(loaded_add.Inputs()[1]->Name(), "B");
 
     fs::remove(model_path);
 }

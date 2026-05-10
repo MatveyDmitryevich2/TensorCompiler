@@ -74,11 +74,13 @@ void ModuleEmitter::EmitMatMul(const Operation& op) {
     const std::string scalar_memref_type = ScalarMemRefType(elem_type);
 
     std::vector<std::string> outer_indices;
+    outer_indices.reserve(2);
     EmitLoopNest({m, n}, 0, outer_indices, [&](const std::vector<std::string>& ij) {
         const std::string acc_buf = EmitScalarAlloca(elem_type, "acc");
         EmitZeroScalar(acc_buf, elem_type);
 
         std::vector<std::string> inner_indices;
+        inner_indices.reserve(1);
         EmitLoopNest({k}, 0, inner_indices, [&](const std::vector<std::string>& kk) {
             const std::string lhs = EmitLoadValue(a, {ij[0], kk[0]}, "a");
             const std::string rhs = EmitLoadValue(b, {kk[0], ij[1]}, "b");
@@ -106,6 +108,7 @@ void ModuleEmitter::EmitTranspose(const Operation& op) {
     const std::vector<size_t> inverse_perm = InversePerm(op, EffectivePerm(op, rank));
 
     std::vector<std::string> indices;
+    indices.reserve(rank);
     EmitLoopNest(ShapeOf(output), 0, indices, [&](const std::vector<std::string>& out_indices) {
         std::vector<std::string> in_indices(rank);
         for (size_t src_axis = 0; src_axis < rank; ++src_axis) {
@@ -150,11 +153,13 @@ void ModuleEmitter::EmitGemm(const Operation& op) {
     const TensorElemType elem_type = y_type.ElemType();
     const std::string scalar_memref_type = ScalarMemRefType(elem_type);
     std::vector<std::string> outer_indices;
+    outer_indices.reserve(2);
     EmitLoopNest({a_m, b_n}, 0, outer_indices, [&](const std::vector<std::string>& ij) {
         const std::string acc_buf = EmitScalarAlloca(elem_type, "acc");
         EmitZeroScalar(acc_buf, elem_type);
 
         std::vector<std::string> inner_indices;
+        inner_indices.reserve(1);
         EmitLoopNest({a_k}, 0, inner_indices, [&](const std::vector<std::string>& kk) {
             const std::vector<std::string> a_idx = attrs.trans_a ? std::vector<std::string>{kk[0], ij[0]} : std::vector<std::string>{ij[0], kk[0]};
             const std::vector<std::string> b_idx = attrs.trans_b ? std::vector<std::string>{ij[1], kk[0]} : std::vector<std::string>{kk[0], ij[1]};

@@ -83,7 +83,7 @@ class INode {
     std::string name_;
 
   public:
-    INode(const std::string& name) : name_{name} {
+    INode(std::string name) : name_{std::move(name)} {
         if (name_.empty()) { throw std::runtime_error{"INode: empty name"}; }
     }
 
@@ -103,10 +103,10 @@ class Value : public INode {
         kInitializer,
     };
 
-    Value(const std::string& name,
+    Value(std::string name,
           BelongTo belong,
           std::optional<TensorData> data = std::nullopt)
-      : INode{name}, belongs_{belong}, initializer_data_{std::move(data)} {
+      : INode{std::move(name)}, belongs_{belong}, initializer_data_{std::move(data)} {
         if (initializer_data_.has_value()) {
             tensor_type_ = initializer_data_->type;
         }
@@ -184,7 +184,7 @@ class Value : public INode {
 
 class IOperation : public INode {
   public:
-    IOperation(const std::string& name) : INode{name} {}
+    IOperation(std::string name) : INode{std::move(name)} {}
     ~IOperation() override = default;
 };
 
@@ -217,12 +217,16 @@ class Operation : public IOperation {
 
   public:
     Operation(
-        const std::string& name,
+        std::string name,
         OpType op_type,
-        const std::vector<Value*>& inputs,
-        const std::vector<Value*>& outputs,
-        const AttributeMap& attrs = {}
-    ) : IOperation{name}, op_type_{op_type}, inputs_{inputs}, outputs_{outputs}, attrs_{attrs} {}
+        std::vector<Value*> inputs,
+        std::vector<Value*> outputs,
+        AttributeMap attrs = {}
+    ) : IOperation{std::move(name)},
+        op_type_{op_type},
+        inputs_{std::move(inputs)},
+        outputs_{std::move(outputs)},
+        attrs_{std::move(attrs)} {}
 
     ~Operation() override = default;
 

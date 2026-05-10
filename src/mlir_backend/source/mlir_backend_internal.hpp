@@ -59,7 +59,7 @@ class ModuleEmitter {
     std::string MemRefType(const Value& value) const;
     std::string ElemType(const Value& value) const;
     const std::vector<int64_t>& ShapeOf(const Value& value) const;
-    std::string RefOf(const Value& value) const;
+    const std::string& RefOf(const Value& value) const;
     static std::string JoinNames(const std::vector<const Value*>& values);
 
     void EmitGlobals();

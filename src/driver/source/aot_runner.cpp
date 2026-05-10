@@ -5,6 +5,7 @@
 #include <sstream>
 #include <stdexcept>
 #include <string>
+#include <string_view>
 #include <vector>
 
 #include "driver/tool_runner.hpp"
@@ -17,7 +18,7 @@ namespace tc::driver {
 
 namespace {
 
-std::string CxxStringLiteral(const std::string& value) {
+std::string CxxStringLiteral(std::string_view value) {
     std::string out = "\"";
     for (char c : value) {
         switch (c) {
@@ -32,7 +33,7 @@ std::string CxxStringLiteral(const std::string& value) {
     return out;
 }
 
-std::string CxxIdentifier(const std::string& name) {
+std::string CxxIdentifier(std::string_view name) {
     std::string out;
     out.reserve(name.size() + 2);
     for (char c : name) {
@@ -79,13 +80,13 @@ const TensorType& RequireFloat32Tensor(const Value& value) {
     return type;
 }
 
-std::string InputPathFor(const DriverOptions& opt, const std::string& name) {
+const std::string& InputPathFor(const DriverOptions& opt, std::string_view name) {
     for (const auto& [input_name, path] : opt.input_paths) {
         if (input_name == name) {
             return path;
         }
     }
-    throw std::runtime_error{"missing input path for compiled run: " + name};
+    throw std::runtime_error{"missing input path for compiled run: " + std::string{name}};
 }
 
 void AppendMemRefShapeSuffix(std::vector<std::string>* values,
